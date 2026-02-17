@@ -134,6 +134,8 @@ let directionLocked = false;
 let isHorizontal = false;
 let activePointerId = -1;
 
+let swipeElement: HTMLElement | null = null;
+
 const onPointerDown = (e: PointerEvent) => {
   if (e.button !== 0) return; // 仅响应主按钮
   startX = e.clientX;
@@ -142,7 +144,8 @@ const onPointerDown = (e: PointerEvent) => {
   directionLocked = false;
   isHorizontal = false;
   activePointerId = e.pointerId;
-  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  swipeElement = e.currentTarget as HTMLElement;
+  // 不在此处 setPointerCapture，避免拦截 dblclick 事件
 };
 
 const onPointerMove = (e: PointerEvent) => {
@@ -161,6 +164,8 @@ const onPointerMove = (e: PointerEvent) => {
       return;
     }
     isDragging.value = true;
+    // 确认为水平滑动后再捕获指针，确保不影响 click / dblclick
+    if (swipeElement) swipeElement.setPointerCapture(e.pointerId);
   }
 
   // 仅允许向左滑，范围 [-80, 0]
@@ -186,6 +191,8 @@ const contextMenuVisible = ref(false);
 const contextMenuPos = ref({ x: 0, y: 0 });
 
 const showContextMenu = (e: MouseEvent) => {
+  // 先关闭其它条目的右键菜单
+  document.dispatchEvent(new CustomEvent('close-all-context-menus'));
   contextMenuPos.value = { x: e.clientX, y: e.clientY };
   contextMenuVisible.value = true;
 };
@@ -201,10 +208,12 @@ const closeContextMenu = () => {
 
 onMounted(() => {
   document.addEventListener('click', closeContextMenu);
+  document.addEventListener('close-all-context-menus', closeContextMenu);
 });
 
 onUnmounted(() => {
   document.removeEventListener('click', closeContextMenu);
+  document.removeEventListener('close-all-context-menus', closeContextMenu);
 });
 
 // ---- 倒计时 ----

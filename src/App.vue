@@ -91,6 +91,7 @@
           :items="countdownItems"
           @synced="handleSynced"
           @back="currentView = 'list'"
+          @config-changed="handleSyncConfigChanged"
         />
       </div>
 
@@ -130,6 +131,11 @@ let stateTimer: number | null = null;
 let expandedSize = { width: 320, height: 420 }; // 记忆展开时的大小
 
 const countdownItems = ref<CountdownItemData[]>([]);
+let webdavConfigured = false;
+let syncDebounceTimer: number | null = null;
+let autoSyncTimer: number | null = null;
+const AUTO_SYNC_INTERVAL = 5 * 60 * 1000; // 5 分钟定时同步
+const SYNC_DEBOUNCE = 2000; // 数据变化后 2 秒触发同步
 
 // ========== 到期检测 ==========
 
@@ -171,6 +177,10 @@ const toggleView = (view: 'sync' | 'settings') => {
 const handleSynced = (items: CountdownItemData[]) => {
   countdownItems.value = items;
   saveData();
+};
+
+const handleSyncConfigChanged = () => {
+  checkWebDavConfig();
 };
 
 const toggleCollapse = async () => {
@@ -261,6 +271,35 @@ const saveData = async () => {
   }
 };
 
+// ========== 云自动同步 ==========
+
+const checkWebDavConfig = async () => {
+  try {
+    const result = await invoke<[string, string] | null>('load_webdav_config');
+    webdavConfigured = !!result;
+  } catch {
+    webdavConfigured = false;
+  }
+};
+
+const doCloudSync = async () => {
+  if (!webdavConfigured) return;
+  try {
+    await invoke('webdav_upload', { json: JSON.stringify(countdownItems.value) });
+  } catch {
+    // 静默失败，不打扰用户
+  }
+};
+
+const scheduleDebouncedSync = () => {
+  if (!webdavConfigured) return;
+  if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+  syncDebounceTimer = setTimeout(() => {
+    doCloudSync();
+    syncDebounceTimer = null;
+  }, SYNC_DEBOUNCE) as unknown as number;
+};
+
 // ========== 窗口状态记忆（位置 + 大小） ==========
 
 const saveWindowState = async () => {
@@ -303,15 +342,19 @@ const restoreWindowState = async () => {
   }
 };
 
-// ========== 自动保存：数据变更时保存 ==========
+// ========== 自动保存 & 自动同步：数据变更时触发 ==========
 
-watch(countdownItems, () => saveData(), { deep: true });
+watch(countdownItems, () => {
+  saveData();
+  scheduleDebouncedSync();
+}, { deep: true });
 
 // ========== 定时刷新 & 生命周期 ==========
 
 onMounted(async () => {
   await restoreWindowState();
   await loadData();
+  await checkWebDavConfig();
 
   // 每秒刷新倒计时以支持分钟级精度，每 10 秒检测到期
   timer = setInterval(() => {
@@ -323,11 +366,18 @@ onMounted(async () => {
   stateTimer = setInterval(() => {
     saveWindowState();
   }, 5000) as unknown as number;
+
+  // 定时云同步（每 5 分钟）
+  autoSyncTimer = setInterval(() => {
+    doCloudSync();
+  }, AUTO_SYNC_INTERVAL) as unknown as number;
 });
 
 onUnmounted(() => {
   if (timer) clearInterval(timer);
   if (stateTimer) clearInterval(stateTimer);
+  if (autoSyncTimer) clearInterval(autoSyncTimer);
+  if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
 });
 </script>
 

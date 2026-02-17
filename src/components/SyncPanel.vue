@@ -101,6 +101,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'synced', items: CountdownItemData[]): void;
   (e: 'back'): void;
+  (e: 'config-changed'): void;
 }>();
 
 // ---- 状态 ----
@@ -181,6 +182,7 @@ const handleTestAndSave = async () => {
     savedServer.value = JIANGUOYUN_SERVER;
     savedEmail.value = email.value.trim();
     isConfigured.value = true;
+    emit('config-changed');
     showMessage('连接成功，已保存配置', 'success');
   } catch (e: any) {
     showMessage(e?.toString() || '连接失败', 'error');
@@ -236,6 +238,7 @@ const handleUnbind = async () => {
     savedEmail.value = '';
     email.value = '';
     appPassword.value = '';
+    emit('config-changed');
     showMessage('已解绑账号', 'success');
   } catch (e: any) {
     showMessage(e?.toString() || '解绑失败', 'error');
