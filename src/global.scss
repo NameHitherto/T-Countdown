@@ -1,0 +1,17 @@
+:root {
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: transparent !important; /* 核心：让 Webview 背景透明 */
+  overflow: hidden; /* 隐藏滚动条 */
+  user-select: none; /* 防止双击选中文字影响拖拽体验 */
+}
+
+/* 隐藏默认焦点轮廓 */
+* {
+  box-sizing: border-box;
+  outline: none;
+}
