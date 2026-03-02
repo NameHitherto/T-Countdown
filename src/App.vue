@@ -1,17 +1,32 @@
 <template>
   <div
     class="widget-container"
-    :class="{ collapsed: isCollapsed }"
-    data-tauri-drag-region
+    :class="{ collapsed: isCollapsed, locked: isLocked }"
     @contextmenu.prevent
+    @click="handleContainerClick"
+    @mousedown="handleDragStart"
   >
     <!-- Header -->
-    <div class="header" data-tauri-drag-region>
-      <span class="title" data-tauri-drag-region>我的倒计时</span>
+    <div class="header">
+      <span class="title">我的倒计时</span>
       <div class="header-actions">
         <button class="icon-btn" title="新增" @click="startAdding" v-show="!isCollapsed && currentView === 'list'">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button
+          class="icon-btn"
+          :class="{ active: isLocked }"
+          :title="isLocked ? '解锁位置' : '锁定位置'"
+          @click="toggleLock"
+          v-show="!isCollapsed"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <rect v-if="isLocked" x="3" y="6" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/>
+            <path v-if="isLocked" d="M5 6V4.5a2 2 0 014 0V6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            <rect v-if="!isLocked" x="3" y="6" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/>
+            <path v-if="!isLocked" d="M9 6V4.5a2 2 0 00-4 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
           </svg>
         </button>
         <button
@@ -26,18 +41,7 @@
             <circle cx="7" cy="7" r="1.8" stroke="currentColor" stroke-width="1.1"/>
           </svg>
         </button>
-        <button
-          class="icon-btn"
-          :class="{ active: currentView === 'sync' }"
-          title="云同步"
-          @click="toggleView('sync')"
-          v-show="!isCollapsed"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M2.5 8.5a4.5 4.5 0 018.2-2.5M11.5 5.5a4.5 4.5 0 01-8.2 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M10 5.5h2v-2M4 8.5H2v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
+
         <button class="icon-btn" :title="isCollapsed ? '展开' : '折叠'" @click="toggleCollapse">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path
@@ -85,19 +89,13 @@
         </div>
       </div>
 
-      <!-- 云同步面板 -->
-      <div class="list-container" v-else-if="currentView === 'sync'">
-        <SyncPanel
-          :items="countdownItems"
-          @synced="handleSynced"
-          @back="currentView = 'list'"
-          @config-changed="handleSyncConfigChanged"
-        />
-      </div>
-
       <!-- 设置中心面板 -->
       <div class="list-container" v-else-if="currentView === 'settings'">
-        <SettingsPanel />
+        <SettingsPanel
+          :items="countdownItems"
+          @synced="handleSynced"
+          @config-changed="handleSyncConfigChanged"
+        />
       </div>
     </div>
   </div>
@@ -106,10 +104,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
+import { getCurrentWindow, availableMonitors, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
 import CountdownItem from './components/CountdownItem.vue';
 import AddItemForm from './components/AddItemForm.vue';
-import SyncPanel from './components/SyncPanel.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import type { CountdownItemData } from './types/countdown';
 
@@ -119,13 +116,15 @@ const COLLAPSED_HEIGHT = 52;
 const MIN_WIDTH = 280;
 const MIN_HEIGHT = 200;
 const STORAGE_KEY = 't-countdown-window-state'; // position + size
+const LOCK_STORAGE_KEY = 't-countdown-lock-state'; // 锁定状态
 
 // ========== 状态 ==========
 
 const isCollapsed = ref(false);
 const isAdding = ref(false);
+const isLocked = ref(false);
 const tick = ref(0);
-const currentView = ref<'list' | 'sync' | 'settings'>('list');
+const currentView = ref<'list' | 'settings'>('list');
 let timer: number | null = null;
 let stateTimer: number | null = null;
 let expandedSize = { width: 320, height: 420 }; // 记忆展开时的大小
@@ -169,9 +168,38 @@ const sortedItems = computed(() => {
 
 // ========== 操作 ==========
 
-const toggleView = (view: 'sync' | 'settings') => {
+const toggleView = (view: 'settings') => {
   currentView.value = currentView.value === view ? 'list' : view;
   isAdding.value = false;
+};
+
+const handleContainerClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  if (!target.closest('.countdown-item-wrapper') && !target.closest('.header-actions')) {
+    document.dispatchEvent(new CustomEvent('close-all-swipes', { detail: { id: null } }));
+  }
+};
+
+const handleDragStart = async (e: MouseEvent) => {
+  if (isLocked.value) return;
+  // 不从按钮、输入框等可交互元素发起拖拽
+  const target = e.target as HTMLElement;
+  if (target.closest('button, input, textarea, select, a, .countdown-item-wrapper, .list-container')) return;
+  const appWindow = getCurrentWindow();
+  await appWindow.startDragging();
+};
+
+const toggleLock = async () => {
+  isLocked.value = !isLocked.value;
+  const appWindow = getCurrentWindow();
+  if (isLocked.value) {
+    // 锁定：禁止拉伸
+    await appWindow.setResizable(false);
+  } else if (!isCollapsed.value) {
+    // 解锁且非折叠：恢复拉伸
+    await appWindow.setResizable(true);
+  }
+  localStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify(isLocked.value));
 };
 
 const handleSynced = (items: CountdownItemData[]) => {
@@ -200,7 +228,8 @@ const toggleCollapse = async () => {
     // 展开
     isCollapsed.value = false;
     await appWindow.setSize(new LogicalSize(expandedSize.width, expandedSize.height));
-    await appWindow.setResizable(true);
+    // 解锁状态才允许拉伸
+    await appWindow.setResizable(!isLocked.value);
   }
 };
 
@@ -335,7 +364,35 @@ const restoreWindowState = async () => {
     }
 
     if (typeof x === 'number' && typeof y === 'number') {
-      await appWindow.setPosition(new LogicalPosition(x, y));
+      // 检查保存的位置是否仍在可用显示器范围内
+      const monitors = await availableMonitors();
+      let isOnScreen = false;
+      for (const m of monitors) {
+        const mx = m.position.x;
+        const my = m.position.y;
+        const mw = m.size.width;
+        const mh = m.size.height;
+        // 窗口至少有 50px 在某个显示器区域内即视为可见
+        if (x + 50 > mx && x < mx + mw && y + 50 > my && y < my + mh) {
+          isOnScreen = true;
+          break;
+        }
+      }
+      if (isOnScreen) {
+        await appWindow.setPosition(new LogicalPosition(x, y));
+      } else {
+        // 显示器已不可用，将窗口移到主显示器中央
+        await appWindow.center();
+      }
+    }
+
+    // 恢复锁定状态
+    const lockSaved = localStorage.getItem(LOCK_STORAGE_KEY);
+    if (lockSaved) {
+      isLocked.value = JSON.parse(lockSaved) === true;
+      if (isLocked.value) {
+        await appWindow.setResizable(false);
+      }
     }
   } catch {
     // 忽略
@@ -406,6 +463,15 @@ onUnmounted(() => {
 
 .header:active {
   cursor: grabbing;
+}
+
+/* 锁定时禁用拖拽光标 */
+.locked .header {
+  cursor: default;
+}
+
+.locked .header:active {
+  cursor: default;
 }
 
 .title {

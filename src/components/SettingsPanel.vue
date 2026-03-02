@@ -22,7 +22,26 @@
         </label>
       </div>
 
-      <!-- 后续可在此处添加更多设置项 -->
+      <!-- 云同步 -->
+      <div class="setting-item clickable" @click="showSync = !showSync">
+        <div class="setting-info">
+          <span class="setting-name">云同步</span>
+          <span class="setting-desc">通过坚果云 WebDAV 同步数据</span>
+        </div>
+        <svg class="chevron" :class="{ expanded: showSync }" width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- 云同步面板 -->
+    <div v-if="showSync" class="sync-section">
+      <SyncPanel
+        :items="items"
+        @synced="$emit('synced', $event)"
+        @back="showSync = false"
+        @config-changed="$emit('config-changed')"
+      />
     </div>
   </div>
 </template>
@@ -30,7 +49,19 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import SyncPanel from './SyncPanel.vue';
+import type { CountdownItemData } from '../types/countdown';
 
+defineProps<{
+  items: CountdownItemData[];
+}>();
+
+defineEmits<{
+  (e: 'synced', items: CountdownItemData[]): void;
+  (e: 'config-changed'): void;
+}>();
+
+const showSync = ref(false);
 const autostart = ref(false);
 const loading = ref(true);
 
@@ -167,5 +198,28 @@ const onAutostartChange = async () => {
 .toggle input:checked + .slider::before {
   transform: translateX(16px);
   background: white;
+}
+
+/* ---- 可点击设置项 ---- */
+
+.setting-item.clickable {
+  cursor: pointer;
+}
+
+.chevron {
+  color: rgba(255, 255, 255, 0.4);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.chevron.expanded {
+  transform: rotate(90deg);
+}
+
+/* ---- 云同步区域 ---- */
+
+.sync-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 12px;
 }
 </style>

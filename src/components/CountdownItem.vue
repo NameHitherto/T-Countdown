@@ -164,6 +164,8 @@ const onPointerMove = (e: PointerEvent) => {
       return;
     }
     isDragging.value = true;
+    // 关闭其它条目的滑动状态
+    document.dispatchEvent(new CustomEvent('close-all-swipes', { detail: { id: props.item.id } }));
     // 确认为水平滑动后再捕获指针，确保不影响 click / dblclick
     if (swipeElement) swipeElement.setPointerCapture(e.pointerId);
   }
@@ -206,14 +208,26 @@ const closeContextMenu = () => {
   contextMenuVisible.value = false;
 };
 
+// ---- 全局滑动状态重置 ----
+
+const handleCloseAllSwipes = (e: Event) => {
+  const customEvent = e as CustomEvent;
+  const exceptId = customEvent.detail?.id;
+  if (exceptId === null || exceptId !== props.item.id) {
+    swipeOffset.value = 0;
+  }
+};
+
 onMounted(() => {
   document.addEventListener('click', closeContextMenu);
   document.addEventListener('close-all-context-menus', closeContextMenu);
+  document.addEventListener('close-all-swipes', handleCloseAllSwipes);
 });
 
 onUnmounted(() => {
   document.removeEventListener('click', closeContextMenu);
   document.removeEventListener('close-all-context-menus', closeContextMenu);
+  document.removeEventListener('close-all-swipes', handleCloseAllSwipes);
 });
 
 // ---- 倒计时 ----

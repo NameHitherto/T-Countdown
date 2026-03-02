@@ -5,7 +5,7 @@
   "identifier": "com.namehitherto.t-countdown",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:8720",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
@@ -20,6 +20,7 @@
         "minHeight": 200,
         "transparent": true,
         "decorations": false,
+        "maximizable": false,
         "alwaysOnBottom": true,
         "skipTaskbar": true,
         "resizable": true

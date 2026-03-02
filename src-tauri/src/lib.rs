@@ -1,11 +1,17 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
+use tauri::Manager;
 
 // ========== 常量 ==========
 
 const ENCRYPT_KEY: &[u8] = b"t-countdown-2024-encrypt-key!@#$";
+
+// ========== 全局 AppHandle ==========
+
+static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 // ========== 路径 ==========
 
@@ -292,6 +298,129 @@ fn set_autostart(enable: bool) -> Result<(), String> {
     }
 }
 
+// ========== Windows 桌面双击监听 ==========
+
+#[cfg(windows)]
+fn start_desktop_dblclick_hook() {
+    use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
+    use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+
+    static VISIBLE: AtomicBool = AtomicBool::new(true);
+    // 手动双击检测状态（低级鼠标钩子不会收到 WM_LBUTTONDBLCLK）
+    static LAST_CLICK_TIME: AtomicU32 = AtomicU32::new(0);
+    static LAST_CLICK_X: AtomicI32 = AtomicI32::new(0);
+    static LAST_CLICK_Y: AtomicI32 = AtomicI32::new(0);
+    static LAST_WAS_DESKTOP: AtomicBool = AtomicBool::new(false);
+
+    const DBLCLICK_TIME_MS: u32 = 500; // 双击判定时间阈值
+    const DBLCLICK_DIST: i32 = 4;      // 双击判定距离阈值
+
+    fn is_desktop_window(hwnd: isize) -> bool {
+        if hwnd == 0 {
+            return false;
+        }
+        unsafe {
+            let mut class_name = [0u16; 64];
+            let len = GetClassNameW(hwnd, class_name.as_mut_ptr(), 64);
+            if len > 0 {
+                let name = String::from_utf16_lossy(&class_name[..len as usize]);
+                // Progman = 桌面主窗口, WorkerW = 桌面子窗口(有壁纸时), SysListView32 = 桌面图标列表
+                return name == "Progman" || name == "WorkerW" || name == "SysListView32";
+            }
+        }
+        false
+    }
+
+    unsafe extern "system" fn mouse_proc(n_code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
+        if n_code >= 0 && w_param == WM_LBUTTONDOWN as WPARAM {
+            let info = &*(l_param as *const MSLLHOOKSTRUCT);
+            let pt = info.pt;
+            let time = info.time;
+            let hwnd = WindowFromPoint(pt);
+
+            if is_desktop_window(hwnd) {
+                let prev_time = LAST_CLICK_TIME.load(Ordering::Relaxed);
+                let prev_x = LAST_CLICK_X.load(Ordering::Relaxed);
+                let prev_y = LAST_CLICK_Y.load(Ordering::Relaxed);
+                let prev_was_desktop = LAST_WAS_DESKTOP.load(Ordering::Relaxed);
+
+                // 判断是否构成双击：上次也在桌面、时间间隔和距离都在阈值内
+                if prev_was_desktop
+                    && time.wrapping_sub(prev_time) <= DBLCLICK_TIME_MS
+                    && (pt.x - prev_x).abs() <= DBLCLICK_DIST
+                    && (pt.y - prev_y).abs() <= DBLCLICK_DIST
+                {
+                    // 桌面双击！切换窗口可见性
+                    let is_visible = VISIBLE.load(Ordering::Relaxed);
+                    if let Some(handle) = APP_HANDLE.get() {
+                        if let Some(win) = handle.webview_windows().get("main") {
+                            let _ = if is_visible {
+                                win.hide()
+                            } else {
+                                win.show()
+                            };
+                            VISIBLE.store(!is_visible, Ordering::Relaxed);
+                        }
+                    }
+                    // 重置，防止连续第三击再次触发
+                    LAST_WAS_DESKTOP.store(false, Ordering::Relaxed);
+                } else {
+                    // 记录为第一次桌面点击
+                    LAST_WAS_DESKTOP.store(true, Ordering::Relaxed);
+                }
+
+                LAST_CLICK_TIME.store(time, Ordering::Relaxed);
+                LAST_CLICK_X.store(pt.x, Ordering::Relaxed);
+                LAST_CLICK_Y.store(pt.y, Ordering::Relaxed);
+            } else {
+                // 非桌面点击，重置
+                LAST_WAS_DESKTOP.store(false, Ordering::Relaxed);
+            }
+        }
+        CallNextHookEx(0, n_code, w_param, l_param)
+    }
+
+    std::thread::spawn(|| unsafe {
+        let hook = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), 0, 0);
+        if hook == 0 {
+            return;
+        }
+        // 消息循环驱动低级钩子
+        let mut msg: MSG = std::mem::zeroed();
+        while GetMessageW(&mut msg, 0, 0, 0) > 0 {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        UnhookWindowsHookEx(hook);
+    });
+}
+
+// ========== 系统托盘 ==========
+
+fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::tray::TrayIconBuilder;
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::image::Image;
+
+    let quit_item = MenuItem::with_id(app, "quit", "关闭软件", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&quit_item])?;
+    let icon = Image::from_bytes(include_bytes!("../icons/countdown.png"))?;
+
+    TrayIconBuilder::new()
+        .icon(icon)
+        .menu(&menu)
+        .tooltip("T-Countdown")
+        .on_menu_event(|app, event| {
+            if event.id == "quit" {
+                app.exit(0);
+            }
+        })
+        .build(app)?;
+
+    Ok(())
+}
+
 // ========== 启动 ==========
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -310,6 +439,15 @@ pub fn run() {
             get_autostart,
             set_autostart,
         ])
+        .setup(|app| {
+            let _ = APP_HANDLE.set(app.handle().clone());
+            // 系统托盘
+            setup_tray(app)?;
+            // 启动桌面双击钩子
+            #[cfg(windows)]
+            start_desktop_dblclick_hook();
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
