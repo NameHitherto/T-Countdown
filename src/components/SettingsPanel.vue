@@ -23,12 +23,23 @@
       </div>
 
       <!-- 云同步 -->
-      <div class="setting-item clickable" @click="showSync = !showSync">
+      <div class="setting-item clickable" @click="showSync = !showSync; showAbout = false">
         <div class="setting-info">
           <span class="setting-name">云同步</span>
           <span class="setting-desc">通过坚果云 WebDAV 同步数据</span>
         </div>
         <svg class="chevron" :class="{ expanded: showSync }" width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <!-- 关于 -->
+      <div class="setting-item clickable" @click="toggleAbout">
+        <div class="setting-info">
+          <span class="setting-name">关于</span>
+          <span class="setting-desc">版本信息与软件更新</span>
+        </div>
+        <svg class="chevron" :class="{ expanded: showAbout }" width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>
@@ -43,12 +54,50 @@
         @config-changed="$emit('config-changed')"
       />
     </div>
+
+    <!-- 关于面板 -->
+    <div v-if="showAbout" class="about-section">
+      <div class="about-info">
+        <div class="about-row">
+          <span class="about-label">软件名称</span>
+          <span class="about-value">T-Countdown</span>
+        </div>
+        <div class="about-row">
+          <span class="about-label">当前版本</span>
+          <span class="about-value">v{{ appVersion }}</span>
+        </div>
+        <div class="about-row">
+          <span class="about-label">作者</span>
+          <span class="about-value">NameHitherto</span>
+        </div>
+      </div>
+
+      <div class="update-area">
+        <div v-if="updateChecking" class="update-status">
+          <span class="update-checking">正在检查更新...</span>
+        </div>
+        <div v-else-if="updateError" class="update-status">
+          <span class="update-error">{{ updateError }}</span>
+          <button class="btn btn-retry" @click="checkForUpdate">重试</button>
+        </div>
+        <div v-else-if="updateAvailable" class="update-status">
+          <span class="update-new">发现新版本 v{{ updateVersion }}</span>
+          <button v-if="!updateInstalling" class="btn btn-update" @click="downloadAndInstall">下载更新</button>
+          <span v-else class="update-installing">{{ updateProgress }}</span>
+        </div>
+        <div v-else class="update-status">
+          <span class="update-latest">已是最新版本</span>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { getVersion } from '@tauri-apps/api/app';
+import { check, type Update } from '@tauri-apps/plugin-updater';
 import SyncPanel from './SyncPanel.vue';
 import type { CountdownItemData } from '../types/countdown';
 
@@ -62,10 +111,94 @@ defineEmits<{
 }>();
 
 const showSync = ref(false);
+const showAbout = ref(false);
 const autostart = ref(false);
 const loading = ref(true);
 
+// ---- 关于 & 更新 ----
+
+const appVersion = ref('');
+const updateChecking = ref(false);
+const updateAvailable = ref(false);
+const updateVersion = ref('');
+const updateError = ref('');
+const updateInstalling = ref(false);
+const updateProgress = ref('正在下载...');
+let pendingUpdate: Update | null = null;
+
+const toggleAbout = () => {
+  showAbout.value = !showAbout.value;
+  showSync.value = false;
+  if (showAbout.value) {
+    checkForUpdate();
+  }
+};
+
+const checkForUpdate = async () => {
+  updateChecking.value = true;
+  updateAvailable.value = false;
+  updateError.value = '';
+  updateVersion.value = '';
+  pendingUpdate = null;
+
+  try {
+    const update = await check();
+    if (update) {
+      updateAvailable.value = true;
+      updateVersion.value = update.version;
+      pendingUpdate = update;
+    }
+  } catch (e: any) {
+    updateError.value = '检查更新失败';
+    console.error('检查更新失败:', e);
+  } finally {
+    updateChecking.value = false;
+  }
+};
+
+const downloadAndInstall = async () => {
+  if (!pendingUpdate) return;
+  updateInstalling.value = true;
+  updateProgress.value = '正在下载...';
+
+  try {
+    let downloaded = 0;
+    let contentLength = 0;
+
+    await pendingUpdate.downloadAndInstall((event) => {
+      switch (event.event) {
+        case 'Started':
+          contentLength = event.data.contentLength ?? 0;
+          break;
+        case 'Progress':
+          downloaded += event.data.chunkLength;
+          if (contentLength > 0) {
+            const pct = Math.round((downloaded / contentLength) * 100);
+            updateProgress.value = `下载中 ${pct}%`;
+          }
+          break;
+        case 'Finished':
+          updateProgress.value = '正在安装...';
+          break;
+      }
+    });
+
+    // 安装完成后需要重启
+    updateProgress.value = '更新完成，即将重启...';
+  } catch (e: any) {
+    updateInstalling.value = false;
+    updateError.value = '更新失败，请稍后重试';
+    updateAvailable.value = false;
+    console.error('更新失败:', e);
+  }
+};
+
 onMounted(async () => {
+  try {
+    appVersion.value = await getVersion();
+  } catch {
+    appVersion.value = '未知';
+  }
   try {
     autostart.value = await invoke<boolean>('get_autostart');
   } catch {
@@ -221,5 +354,105 @@ const onAutostartChange = async () => {
 .sync-section {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   padding-top: 12px;
+}
+
+/* ---- 关于区域 ---- */
+
+.about-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: fadeIn 0.15s ease;
+}
+
+.about-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.about-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+}
+
+.about-label {
+  font-size: 12px;
+  opacity: 0.5;
+}
+
+.about-value {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.update-area {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+}
+
+.update-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.update-checking {
+  opacity: 0.5;
+}
+
+.update-latest {
+  color: rgba(120, 200, 140, 0.85);
+}
+
+.update-new {
+  color: rgba(120, 180, 255, 0.9);
+  font-weight: 500;
+}
+
+.update-error {
+  color: rgba(255, 120, 120, 0.85);
+}
+
+.update-installing {
+  opacity: 0.6;
+}
+
+.btn-update,
+.btn-retry {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.btn-update {
+  background: rgba(45, 106, 79, 0.6);
+  color: white;
+}
+
+.btn-update:hover {
+  background: rgba(45, 106, 79, 0.85);
+}
+
+.btn-retry {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.btn-retry:hover {
+  background: rgba(255, 255, 255, 0.18);
 }
 </style>
