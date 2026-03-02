@@ -51,7 +51,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'T-Countdown ${{ github.ref_name }}'
-          releaseBody: '请下载对应平台的安装包。'
+          releaseBody: '支持软件自动更新。'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
