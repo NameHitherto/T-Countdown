@@ -1,16 +1,11 @@
 use std::fs;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 
 // ========== 常量 ==========
 
 const ENCRYPT_KEY: &[u8] = b"t-countdown-2024-encrypt-key!@#$";
-
-// ========== 全局 AppHandle ==========
-
-static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 // ========== 路径 ==========
 
@@ -363,197 +358,47 @@ fn set_autostart(enable: bool) -> Result<(), String> {
     }
 }
 
-// ========== Windows 桌面图标可见性监听 ==========
-//
-// 使用 windows crate (windows-rs) 实现，采用双重机制：
-//
-//   1. SetWinEventHook 监听 EVENT_OBJECT_SHOW / EVENT_OBJECT_HIDE，
-//      收到事件后通过 SHGetSetSettings 查询 Shell 的 fHideIcons 标志位。
-//
-//   2. 兜底定时器每 500ms 通过 SHGetSetSettings 轮询，确保不遗漏。
-//
-// 关键修复：通过 run_on_main_thread 确保 Tauri 窗口操作在主线程执行。
-
-#[cfg(windows)]
-mod desktop_icon_monitor {
-    use std::sync::atomic::{AtomicBool, Ordering};
-
-    /// 桌面图标是否处于隐藏状态（用于去重，避免重复操作）
-    static ICONS_HIDDEN: AtomicBool = AtomicBool::new(false);
-
-    // ---- SHGetSetSettings FFI（权威状态源）----
-
-    #[link(name = "shell32")]
-    extern "system" {
-        fn SHGetSetSettings(lpss: *mut u8, dwMask: u32, bSet: i32);
-    }
-    const SSF_HIDEICONS: u32 = 0x00004000;
-
-    // Win32 事件常量（内联定义，避免 crate 模块路径差异）
-    const EVENT_OBJECT_SHOW: u32 = 0x8002;
-    const EVENT_OBJECT_HIDE: u32 = 0x8003;
-    const WINEVENT_OUTOFCONTEXT: u32 = 0x0000;
-    const WINEVENT_SKIPOWNPROCESS: u32 = 0x0002;
-
-    /// 通过 Shell API 权威检测桌面图标是否被隐藏。
-    /// SHELLSTATE 第一个 DWORD 是 bitfield，fHideIcons 位于 bit 12。
-    fn are_desktop_icons_hidden() -> bool {
-        unsafe {
-            let mut buf = [0u8; 64];
-            SHGetSetSettings(buf.as_mut_ptr(), SSF_HIDEICONS, 0);
-            let flags = u32::from_ne_bytes([buf[0], buf[1], buf[2], buf[3]]);
-            (flags >> 12) & 1 != 0
-        }
-    }
-
-    /// 同步 Tauri 挂件的显隐状态。
-    /// 【关键】必须通过 run_on_main_thread 分发到主线程执行窗口操作。
-    fn sync_widget(hidden: bool) {
-        if let Some(handle) = crate::APP_HANDLE.get() {
-            let handle = handle.clone();
-            let handle2 = handle.clone();
-            let _ = handle.run_on_main_thread(move || {
-                use tauri::Manager;
-                if let Some(win) = handle2.webview_windows().get("main") {
-                    let result = if hidden { win.hide() } else { win.show() };
-                    match result {
-                        Ok(_) => eprintln!(
-                            "[desktop-monitor] 窗口{}成功",
-                            if hidden { "隐藏" } else { "显示" }
-                        ),
-                        Err(e) => eprintln!(
-                            "[desktop-monitor] 窗口{}失败: {}",
-                            if hidden { "隐藏" } else { "显示" },
-                            e
-                        ),
-                    }
-                } else {
-                    eprintln!("[desktop-monitor] 未找到 main 窗口");
-                }
-            });
-        } else {
-            eprintln!("[desktop-monitor] APP_HANDLE 未初始化");
-        }
-    }
-
-    /// 检查桌面图标实际状态，仅在状态变化时同步挂件显隐
-    fn check_and_sync() {
-        let hidden = are_desktop_icons_hidden();
-        let prev = ICONS_HIDDEN.swap(hidden, Ordering::SeqCst);
-        if hidden != prev {
-            eprintln!(
-                "[desktop-monitor] 状态变化: {} -> {}",
-                if prev { "隐藏" } else { "显示" },
-                if hidden { "隐藏" } else { "显示" }
-            );
-            sync_widget(hidden);
-        }
-    }
-
-    // ---- WinEvent 回调 ----
-
-    /// `SetWinEventHook` 回调：收到 SHOW/HIDE 窗口事件时检查桌面图标状态。
-    unsafe extern "system" fn win_event_callback(
-        _hook: windows::Win32::UI::Accessibility::HWINEVENTHOOK,
-        _event: u32,
-        _hwnd: windows::Win32::Foundation::HWND,
-        id_object: i32,
-        _id_child: i32,
-        _id_event_thread: u32,
-        _dw_ms_event_time: u32,
-    ) {
-        // 只关心窗口级别的事件 (OBJID_WINDOW = 0)
-        if id_object != 0 {
-            return;
-        }
-        check_and_sync();
-    }
-
-    // ---- 定时器回调（兜底轮询）----
-
-    /// 每 500ms 由消息循环触发，通过 SHGetSetSettings 检查桌面图标状态。
-    unsafe extern "system" fn timer_proc(
-        _hwnd: windows::Win32::Foundation::HWND,
-        _msg: u32,
-        _id: usize,
-        _time: u32,
-    ) {
-        check_and_sync();
-    }
-
-    // ---- 启动监听 ----
-
-    /// 在独立线程中启动桌面图标可见性监听。
-    pub fn start() {
-        std::thread::spawn(|| {
-            // 等待 Explorer Shell 完成桌面初始化
-            std::thread::sleep(std::time::Duration::from_secs(2));
-
-            // 初始状态检查
-            let hidden = are_desktop_icons_hidden();
-            ICONS_HIDDEN.store(hidden, Ordering::SeqCst);
-            eprintln!("[desktop-monitor] 初始状态: icons_hidden={}", hidden);
-            if hidden {
-                sync_widget(true);
-            }
-
-            unsafe {
-                use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent};
-                use windows::Win32::UI::WindowsAndMessaging::{
-                    SetTimer, KillTimer, GetMessageW, TranslateMessage, DispatchMessageW, MSG,
-                };
-
-                // 注册 WinEvent 钩子，监听 SHOW / HIDE 事件（即时响应通道）
-                let hook = SetWinEventHook(
-                    EVENT_OBJECT_SHOW,
-                    EVENT_OBJECT_HIDE,
-                    None,                        // hmodWinEventProc (None = out-of-context)
-                    Some(win_event_callback),
-                    0,                           // idProcess  (0 = 所有进程)
-                    0,                           // idThread   (0 = 所有线程)
-                    WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
-                );
-                eprintln!("[desktop-monitor] SetWinEventHook: hook={:?}", hook);
-
-                // 兜底定时器：每 500ms 轮询一次 SHGetSetSettings
-                let timer_id = SetTimer(None, 1, 500, Some(timer_proc));
-                eprintln!("[desktop-monitor] SetTimer: timer_id={}", timer_id);
-
-                // 消息循环 —— 同时驱动 WinEvent 回调和定时器
-                let mut msg = MSG::default();
-                while GetMessageW(&mut msg, None, 0, 0).0 > 0 {
-                    let _ = TranslateMessage(&msg);
-                    DispatchMessageW(&msg);
-                }
-
-                // 收到 WM_QUIT 后清理
-                let _ = UnhookWinEvent(hook);
-                if timer_id != 0 {
-                    let _ = KillTimer(None, timer_id);
-                }
-            }
-        });
-    }
-}
-
 // ========== 系统托盘 ==========
 
 fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::tray::TrayIconBuilder;
     use tauri::menu::{Menu, MenuItem};
     use tauri::image::Image;
+    use tauri::Manager;
 
+    let toggle_item = MenuItem::with_id(app, "toggle", "隐藏软件", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "关闭软件", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&quit_item])?;
+    let menu = Menu::with_items(app, &[&toggle_item, &quit_item])?;
     let icon = Image::from_bytes(include_bytes!("../icons/countdown.png"))?;
 
     TrayIconBuilder::new()
         .icon(icon)
         .menu(&menu)
         .tooltip("T-Countdown")
-        .on_menu_event(|app, event| {
+        .on_menu_event(move |app, event| {
             if event.id == "quit" {
                 app.exit(0);
+            } else if event.id == "toggle" {
+                if let Some(win) = app.webview_windows().get("main") {
+                    if win.is_visible().unwrap_or(true) {
+                        let _ = win.hide();
+                        // 更新菜单文本为“显示软件”
+                        if let Some(item) = menu.get("toggle") {
+                            if let Some(mi) = item.as_menuitem() {
+                                let _ = mi.set_text("显示软件");
+                            }
+                        }
+                    } else {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                        // 更新菜单文本为“隐藏软件”
+                        if let Some(item) = menu.get("toggle") {
+                            if let Some(mi) = item.as_menuitem() {
+                                let _ = mi.set_text("隐藏软件");
+                            }
+                        }
+                    }
+                }
             }
         })
         .build(app)?;
@@ -581,12 +426,8 @@ pub fn run() {
             set_autostart,
         ])
         .setup(|app| {
-            let _ = APP_HANDLE.set(app.handle().clone());
             // 系统托盘
             setup_tray(app)?;
-            // 启动桌面图标可见性监听
-            #[cfg(windows)]
-            desktop_icon_monitor::start();
             Ok(())
         })
         .run(tauri::generate_context!())

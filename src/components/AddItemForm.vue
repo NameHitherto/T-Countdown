@@ -28,19 +28,32 @@
       <span class="sync-icon">⇆</span>
       <div class="date-field">
         <label class="field-label">截止日期</label>
-        <input
-          v-model="dateStr"
-          class="form-input"
-          type="date"
-          :min="todayStr"
-          @input="onDateTimeInput"
-        />
-        <input
-          v-model="timeStr"
-          class="form-input time-input"
-          type="time"
-          @input="onDateTimeInput"
-        />
+        <VueDatePicker
+          v-model="pickerDate"
+          :min-date="new Date()"
+          :enable-time-picker="true"
+          :dark="true"
+          :teleport="true"
+          auto-apply
+          :locale="zhCN"
+          :format="formatDisplay"
+          position="left"
+          :offset="4"
+          text-input
+          six-weeks="fair"
+          @update:model-value="onPickerChange"
+        >
+          <template #trigger>
+            <button class="picker-trigger" type="button">
+              <span class="picker-text">{{ displayDateStr }}</span>
+              <svg class="picker-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <rect x="1.5" y="2.5" width="11" height="9" rx="1.5" stroke="currentColor" stroke-width="1.1"/>
+                <path d="M1.5 5.5h11" stroke="currentColor" stroke-width="1.1"/>
+                <path d="M4.5 1v2M9.5 1v2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </template>
+        </VueDatePicker>
       </div>
     </div>
 
@@ -68,6 +81,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue';
+import { VueDatePicker } from '@vuepic/vue-datepicker';
+import '@vuepic/vue-datepicker/dist/main.css';
+import { zhCN } from 'date-fns/locale';
 import type { CountdownItemData } from '../types/countdown';
 import { PRESET_COLORS } from '../types/countdown';
 
@@ -87,8 +103,7 @@ const isEditMode = computed(() => !!props.editItem);
 
 const name = ref('');
 const days = ref<number>(1);
-const dateStr = ref('');
-const timeStr = ref(currentTimeStr());
+const pickerDate = ref<Date>(new Date(Date.now() + 86400000));
 const selectedColor = ref(PRESET_COLORS[0]);
 const nameInput = ref<HTMLInputElement | null>(null);
 
@@ -97,32 +112,29 @@ let syncLock = false;
 
 // ---- 工具方法 ----
 
-const todayStr = computed(() => formatDateStr(new Date()));
-
-function currentTimeStr(): string {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+function daysFromNow(target: Date): number {
+  return Math.max(0, Math.round((target.getTime() - Date.now()) / 86400000));
 }
 
-function formatDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function dateFromDays(numDays: number): Date {
+  return new Date(Date.now() + numDays * 86400000);
 }
 
-function daysFromNow(dateString: string, time: string): number {
-  const [h, m] = (time || '00:00').split(':').map(Number);
-  const target = new Date(dateString);
-  target.setHours(h, m, 0, 0);
-  const now = Date.now();
-  return Math.max(0, Math.round((target.getTime() - now) / 86400000));
+/** 格式化日期用于 datepicker 显示 */
+function formatDisplay(date: Date): string {
+  if (!date) return '';
+  const y = date.getFullYear();
+  const M = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  return `${y}-${M}-${d} ${h}:${m}`;
 }
 
-function dateTimeFromDays(numDays: number): { date: string; time: string } {
-  const d = new Date(Date.now() + numDays * 86400000);
-  return {
-    date: formatDateStr(d),
-    time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
-  };
-}
+/** 用于触发按钮的显示文本 */
+const displayDateStr = computed(() => {
+  return formatDisplay(pickerDate.value);
+});
 
 // ---- 天数 → 日期 同步 ----
 
@@ -131,27 +143,24 @@ const onDaysInput = () => {
   syncLock = true;
   const d = Math.max(0, Math.floor(days.value || 0));
   days.value = d;
-  const result = dateTimeFromDays(d);
-  dateStr.value = result.date;
-  timeStr.value = result.time;
+  pickerDate.value = dateFromDays(d);
   nextTick(() => { syncLock = false; });
 };
 
-// ---- 日期/时间 → 天数 同步 ----
+// ---- 日期 → 天数 同步 ----
 
-const onDateTimeInput = () => {
-  if (syncLock) return;
+const onPickerChange = (val: Date | null) => {
+  if (syncLock || !val) return;
   syncLock = true;
-  if (dateStr.value) {
-    days.value = daysFromNow(dateStr.value, timeStr.value);
-  }
+  pickerDate.value = val;
+  days.value = daysFromNow(val);
   nextTick(() => { syncLock = false; });
 };
 
 // ---- 校验 ----
 
 const isValid = computed(() => {
-  return name.value.trim().length > 0 && dateStr.value.length > 0;
+  return name.value.trim().length > 0 && pickerDate.value != null;
 });
 
 // ---- 提交 ----
@@ -159,9 +168,8 @@ const isValid = computed(() => {
 const handleSubmit = () => {
   if (!isValid.value) return;
 
-  const target = new Date(dateStr.value);
-  const [h, m] = (timeStr.value || '23:59').split(':').map(Number);
-  target.setHours(h, m, 0, 0);
+  const target = new Date(pickerDate.value);
+  target.setSeconds(0, 0);
 
   const item: CountdownItemData = {
     id: props.editItem?.id ?? Date.now().toString(),
@@ -185,16 +193,13 @@ const initForm = () => {
     const d = new Date(props.editItem.targetDate);
     name.value = props.editItem.name;
     selectedColor.value = props.editItem.bgColor;
-    dateStr.value = formatDateStr(d);
-    timeStr.value = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    days.value = daysFromNow(dateStr.value, timeStr.value);
+    pickerDate.value = d;
+    days.value = daysFromNow(d);
   } else {
     // 新增默认 1 天后
     name.value = '';
     days.value = 1;
-    const result = dateTimeFromDays(1);
-    dateStr.value = result.date;
-    timeStr.value = result.time;
+    pickerDate.value = dateFromDays(1);
     selectedColor.value = PRESET_COLORS[0];
   }
 };
@@ -244,16 +249,6 @@ onMounted(async () => {
   border-color: rgba(255, 255, 255, 0.4);
 }
 
-.form-input[type="date"]::-webkit-calendar-picker-indicator,
-.form-input[type="time"]::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  cursor: pointer;
-}
-
-.time-input {
-  margin-top: 3px;
-}
-
 /* 隐藏 number 输入框的上下箭头 */
 .num-input::-webkit-outer-spin-button,
 .num-input::-webkit-inner-spin-button {
@@ -290,6 +285,41 @@ onMounted(async () => {
   font-size: 14px;
   opacity: 0.3;
   padding-top: 21px;
+  flex-shrink: 0;
+}
+
+/* ---- 日期选择器触发按钮 ---- */
+
+.picker-trigger {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  transition: border-color 0.2s;
+  text-align: left;
+}
+
+.picker-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.picker-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-icon {
+  opacity: 0.5;
   flex-shrink: 0;
 }
 
@@ -355,5 +385,58 @@ onMounted(async () => {
 .btn-confirm:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+</style>
+
+<!-- VueDatePicker 全局样式覆盖（teleport 到 body，不能用 scoped） -->
+<style>
+.dp__theme_dark {
+  --dp-background-color: rgba(30, 30, 30, 0.95);
+  --dp-text-color: #e0e0e0;
+  --dp-hover-color: rgba(255, 255, 255, 0.1);
+  --dp-hover-text-color: #fff;
+  --dp-primary-color: rgba(100, 140, 255, 0.85);
+  --dp-primary-text-color: #fff;
+  --dp-secondary-color: rgba(255, 255, 255, 0.15);
+  --dp-border-color: rgba(255, 255, 255, 0.12);
+  --dp-menu-border-color: rgba(255, 255, 255, 0.1);
+  --dp-disabled-color: rgba(255, 255, 255, 0.05);
+  --dp-disabled-color-text: rgba(255, 255, 255, 0.25);
+  --dp-highlight-color: rgba(100, 140, 255, 0.15);
+  --dp-range-between-dates-background-color: rgba(100, 140, 255, 0.1);
+  --dp-range-between-dates-text-color: #e0e0e0;
+  --dp-icon-color: rgba(255, 255, 255, 0.5);
+}
+
+/* 紧凑化日期选择面板 */
+.dp__menu {
+  border-radius: 10px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+  font-size: 13px !important;
+}
+
+.dp__cell_inner {
+  width: 32px !important;
+  height: 32px !important;
+  font-size: 12px !important;
+}
+
+.dp__calendar_header_item {
+  width: 32px !important;
+  height: 28px !important;
+  font-size: 11px !important;
+}
+
+.dp__month_year_wrap {
+  font-size: 13px !important;
+}
+
+/* 时间选择器紧凑化 */
+.dp__time_display {
+  font-size: 13px !important;
+}
+
+.dp__overlay_cell {
+  font-size: 12px !important;
 }
 </style>
