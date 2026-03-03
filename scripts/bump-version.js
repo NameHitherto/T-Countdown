@@ -6,7 +6,8 @@
  * 执行流程:
  * 1. 更新 package.json、src-tauri/tauri.conf.json、src-tauri/Cargo.toml 的版本号
  * 2. 读取 RELEASE_NOTES.md 内容，写入 .github/workflows/release.yml 的 releaseBody
- * 3. 自动 git commit 并在最新提交上打 tag，然后推送 tag
+ * 3. 执行 npm install 和 cargo update 同步 lock 文件
+ * 4. 自动 git commit 并在最新提交上打 tag，然后推送 tag
  */
 
 import fs from 'fs';
@@ -81,7 +82,15 @@ yml = yml.replace(
 fs.writeFileSync(ymlPath, yml);
 console.log(`release.yml: releaseBody 已更新`);
 
-// ========== 3. Git commit + tag + push ==========
+// ========== 3. 同步 lock 文件 ==========
+
+console.log('同步 package-lock.json ...');
+execSync('npm install', { cwd: root, stdio: 'inherit' });
+
+console.log('同步 Cargo.lock ...');
+execSync('cargo update --workspace', { cwd: path.join(root, 'src-tauri'), stdio: 'inherit' });
+
+// ========== 4. Git commit + tag + push ==========
 
 try {
   execSync('git add -A', { cwd: root, stdio: 'inherit' });
