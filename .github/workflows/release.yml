@@ -52,7 +52,12 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'T-Countdown ${{ github.ref_name }}'
           releaseBody: |
-            请下载对应平台的安装包。
+            ## 更新内容
+            
+            - 体验优化：开机自动取消勾选后，会清除注册表项。
+            - 功能调整：双击桌面隐藏软件的交互改为通过在系统托盘处单击切换软件的显隐状态。
+            - 体验优化：提升日期时间选择的使用体验。
+
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
