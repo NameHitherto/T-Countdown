@@ -7,6 +7,7 @@
     @mousedown="handleDragStart"
   >
     <!-- Header -->
+    <div class="content-wrapper" :style="contentBlurStyle">
     <div class="header">
       <span class="title">我的倒计时</span>
       <div class="header-actions">
@@ -95,9 +96,38 @@
           :items="countdownItems"
           @synced="handleSynced"
           @config-changed="handleSyncConfigChanged"
+          @privacy-changed="handlePrivacyChanged"
         />
       </div>
     </div>
+    </div><!-- /content-wrapper -->
+
+    <!-- 隐私模式按钮（右下角） -->
+    <button
+      v-if="privacySettings.enabled && !isCollapsed && !isPrivacyActive"
+      class="privacy-trigger-btn"
+      :class="{ pressing: isLongPressing }"
+      title="长按启用隐私模式"
+      @mousedown.prevent="onPrivacyBtnDown"
+      @mouseup="onPrivacyBtnUp"
+      @mouseleave="onPrivacyBtnUp"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8"/>
+        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </button>
+
+    <!-- 隐私模式遮罩 -->
+    <PrivacyOverlay
+      :active="isPrivacyActive"
+      :spreading="isLongPressing"
+      :spread-progress="spreadProgress"
+      :settings="privacySettings"
+      @close="closeWindow"
+      @deactivate="deactivatePrivacy"
+      @reveal-progress="handleRevealProgress"
+    />
   </div>
 </template>
 
@@ -108,7 +138,9 @@ import { getCurrentWindow, availableMonitors, LogicalSize, LogicalPosition } fro
 import CountdownItem from './components/CountdownItem.vue';
 import AddItemForm from './components/AddItemForm.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
-import type { CountdownItemData } from './types/countdown';
+import PrivacyOverlay from './components/PrivacyOverlay.vue';
+import type { CountdownItemData, PrivacySettings } from './types/countdown';
+import { DEFAULT_PRIVACY_SETTINGS } from './types/countdown';
 
 // ========== 常量 ==========
 
@@ -117,6 +149,7 @@ const MIN_WIDTH = 280;
 const MIN_HEIGHT = 200;
 const STORAGE_KEY = 't-countdown-window-state'; // position + size
 const LOCK_STORAGE_KEY = 't-countdown-lock-state'; // 锁定状态
+const PRIVACY_STORAGE_KEY = 't-countdown-privacy-settings'; // 隐私设置
 
 // ========== 状态 ==========
 
@@ -133,8 +166,34 @@ const countdownItems = ref<CountdownItemData[]>([]);
 let webdavConfigured = false;
 let syncDebounceTimer: number | null = null;
 let autoSyncTimer: number | null = null;
-const AUTO_SYNC_INTERVAL = 5 * 60 * 1000; // 5 分钟定时同步
-const SYNC_DEBOUNCE = 2000; // 数据变化后 2 秒触发同步
+const AUTO_SYNC_INTERVAL = 1 * 60 * 1000; // 1 分钟定时同步
+const SYNC_DEBOUNCE = 500; // 数据变化后 0.5 秒触发同步
+
+// ========== 隐私模式状态 ==========
+
+const privacySettings = ref<PrivacySettings>({ ...DEFAULT_PRIVACY_SETTINGS });
+const isPrivacyActive = ref(false);
+const isLongPressing = ref(false);
+const spreadProgress = ref(0);
+const revealProgress = ref(0);
+const maxBlur = 4; // 最大模糊半径（px）
+let longPressRaf: number | null = null;
+let longPressStartTime = 0;
+
+// 内容模糊样式：直接对内容 DOM 应用 filter:blur，而非依赖 backdrop-filter
+const contentBlurStyle = computed(() => {
+  // 隐私模式完全激活时：根据揭示进度平滑消退模糊
+  if (isPrivacyActive.value) {
+    const blur = maxBlur * (1 - revealProgress.value);
+    return { filter: `blur(${blur}px)` };
+  }
+  // 长按蔓延中：逐渐增加模糊
+  if (isLongPressing.value && spreadProgress.value > 0) {
+    const blur = spreadProgress.value * maxBlur;
+    return { filter: `blur(${blur}px)` };
+  }
+  return {};
+});
 
 // ========== 到期检测 ==========
 
@@ -275,6 +334,72 @@ const handleDelete = (id: string) => {
   saveData();
 };
 
+// ========== 隐私模式 ==========
+
+const loadPrivacySettings = () => {
+  try {
+    const saved = localStorage.getItem(PRIVACY_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as Partial<PrivacySettings>;
+      privacySettings.value = { ...DEFAULT_PRIVACY_SETTINGS, ...parsed };
+    }
+  } catch { /* ignore */ }
+};
+
+const handlePrivacyChanged = (settings: PrivacySettings) => {
+  privacySettings.value = settings;
+};
+
+const onPrivacyBtnDown = () => {
+  if (isPrivacyActive.value) return;
+  isLongPressing.value = true;
+  spreadProgress.value = 0;
+  longPressStartTime = performance.now();
+
+  const duration = privacySettings.value.longPressDuration;
+
+  const animate = (now: number) => {
+    if (!isLongPressing.value) return;
+    const elapsed = now - longPressStartTime;
+    const t = Math.min(elapsed / duration, 1);
+    // easeInQuad for accelerating spread
+    spreadProgress.value = t * t;
+
+    if (t >= 1) {
+      // 长按完成，激活隐私模式
+      isLongPressing.value = false;
+      spreadProgress.value = 0;
+      isPrivacyActive.value = true;
+      longPressRaf = null;
+      return;
+    }
+
+    longPressRaf = requestAnimationFrame(animate);
+  };
+
+  longPressRaf = requestAnimationFrame(animate);
+};
+
+const onPrivacyBtnUp = () => {
+  if (!isLongPressing.value) return;
+  // 未达到生效时间，取消
+  isLongPressing.value = false;
+  spreadProgress.value = 0;
+  if (longPressRaf) {
+    cancelAnimationFrame(longPressRaf);
+    longPressRaf = null;
+  }
+};
+
+const deactivatePrivacy = () => {
+  isPrivacyActive.value = false;
+  revealProgress.value = 0;
+};
+
+const handleRevealProgress = (progress: number) => {
+  revealProgress.value = progress;
+};
+
 // ========== 数据持久化（通过 Rust 命令存到 Documents/T-Countdown/data.json） ==========
 
 const loadData = async () => {
@@ -412,6 +537,7 @@ onMounted(async () => {
   await restoreWindowState();
   await loadData();
   await checkWebDavConfig();
+  loadPrivacySettings();
 
   // 每秒刷新倒计时以支持分钟级精度，每 10 秒检测到期
   timer = setInterval(() => {
@@ -435,11 +561,13 @@ onUnmounted(() => {
   if (stateTimer) clearInterval(stateTimer);
   if (autoSyncTimer) clearInterval(autoSyncTimer);
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+  if (longPressRaf) cancelAnimationFrame(longPressRaf);
 });
 </script>
 
 <style scoped>
 .widget-container {
+  position: relative;
   width: 100vw;
   height: 100vh;
   padding: 15px;
@@ -453,6 +581,14 @@ onUnmounted(() => {
 }
 
 /* ---- Header ---- */
+.content-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  transition: filter 0.05s linear;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
@@ -539,5 +675,38 @@ onUnmounted(() => {
   padding: 40px 0;
   font-size: 13px;
   opacity: 0.4;
+}
+
+/* ---- 隐私模式触发按钮 ---- */
+.privacy-trigger-btn {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.45);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, transform 0.15s;
+  padding: 0;
+  z-index: 10;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.privacy-trigger-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.privacy-trigger-btn.pressing {
+  transform: scale(0.9);
+  background: rgba(255, 255, 255, 0.22);
+  color: white;
 }
 </style>

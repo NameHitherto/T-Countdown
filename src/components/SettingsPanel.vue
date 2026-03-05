@@ -22,8 +22,35 @@
         </label>
       </div>
 
+      <!-- 隐私模式 -->
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-name">隐私模式</span>
+          <span class="setting-desc">快速遮蔽窗口内容</span>
+        </div>
+        <label class="toggle">
+          <input
+            type="checkbox"
+            v-model="privacySettings.enabled"
+            @change="onPrivacyChange"
+          />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <!-- 隐私模式子设置 -->
+      <div v-if="privacySettings.enabled" class="setting-item clickable" @click="togglePrivacyPanel">
+        <div class="setting-info">
+          <span class="setting-name">隐私设置</span>
+          <span class="setting-desc">自定义长按时间与遮罩样式</span>
+        </div>
+        <svg class="chevron" :class="{ expanded: showPrivacy }" width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
       <!-- 云同步 -->
-      <div class="setting-item clickable" @click="showSync = !showSync; showAbout = false">
+      <div class="setting-item clickable" @click="showSync = !showSync; showAbout = false; showPrivacy = false">
         <div class="setting-info">
           <span class="setting-name">云同步</span>
           <span class="setting-desc">通过坚果云 WebDAV 同步数据</span>
@@ -42,6 +69,61 @@
         <svg class="chevron" :class="{ expanded: showAbout }" width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
+      </div>
+    </div>
+
+    <!-- 隐私设置面板 -->
+    <div v-if="showPrivacy" class="privacy-section">
+      <div class="privacy-settings">
+        <!-- 长按生效时间 -->
+        <div class="privacy-row">
+          <span class="privacy-label">长按生效时间</span>
+          <div class="duration-control">
+            <button class="dur-btn" @click="adjustDuration(-100)" :disabled="privacySettings.longPressDuration <= 300">−</button>
+            <span class="dur-value">{{ (privacySettings.longPressDuration / 1000).toFixed(1) }}s</span>
+            <button class="dur-btn" @click="adjustDuration(100)" :disabled="privacySettings.longPressDuration >= 5000">+</button>
+          </div>
+        </div>
+
+        <!-- 遮罩模式 -->
+        <div class="privacy-row">
+          <span class="privacy-label">遮罩模式</span>
+          <div class="mask-mode-group">
+            <button
+              class="mask-mode-btn"
+              :class="{ active: privacySettings.maskMode === 'blur' }"
+              @click="setMaskMode('blur')"
+            >毛玻璃</button>
+            <button
+              class="mask-mode-btn"
+              :class="{ active: privacySettings.maskMode === 'image' }"
+              @click="setMaskMode('image')"
+            >图片</button>
+          </div>
+        </div>
+
+        <!-- 自定义图片 -->
+        <div v-if="privacySettings.maskMode === 'image'" class="privacy-row image-row">
+          <span class="privacy-label">遮罩图片</span>
+          <div class="image-upload-area">
+            <div
+              v-if="privacySettings.maskImage"
+              class="image-preview"
+              :style="{ backgroundImage: `url(${privacySettings.maskImage})` }"
+              @click="pickImage"
+            >
+              <div class="image-overlay-hint">点击更换</div>
+            </div>
+            <button v-else class="pick-image-btn" @click="pickImage">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M3 16l5-5 4 4 3-3 6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="8.5" cy="8.5" r="1.5" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+              选择图片
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -90,6 +172,13 @@
         </div>
       </div>
     </div>
+
+    <!-- 内联提示 Toast -->
+    <Transition name="toast">
+      <div v-if="toastMsg" class="inline-toast">
+        {{ toastMsg }}
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -99,21 +188,37 @@ import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import SyncPanel from './SyncPanel.vue';
-import type { CountdownItemData } from '../types/countdown';
+import type { CountdownItemData, PrivacySettings, PrivacyMaskMode } from '../types/countdown';
+import { DEFAULT_PRIVACY_SETTINGS } from '../types/countdown';
+
+const PRIVACY_STORAGE_KEY = 't-countdown-privacy-settings';
 
 defineProps<{
   items: CountdownItemData[];
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'synced', items: CountdownItemData[]): void;
   (e: 'config-changed'): void;
+  (e: 'privacy-changed', settings: PrivacySettings): void;
 }>();
 
 const showSync = ref(false);
 const showAbout = ref(false);
+const showPrivacy = ref(false);
 const autostart = ref(false);
 const loading = ref(true);
+const toastMsg = ref('');
+let toastTimer: number | null = null;
+
+const showToast = (msg: string, duration = 2500) => {
+  toastMsg.value = msg;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastMsg.value = '';
+    toastTimer = null;
+  }, duration) as unknown as number;
+};
 
 // ---- 关于 & 更新 ----
 
@@ -126,9 +231,72 @@ const updateInstalling = ref(false);
 const updateProgress = ref('正在下载...');
 let pendingUpdate: Update | null = null;
 
+// ---- 隐私模式设置 ----
+
+const privacySettings = ref<PrivacySettings>({ ...DEFAULT_PRIVACY_SETTINGS });
+
+const loadPrivacySettings = () => {
+  try {
+    const saved = localStorage.getItem(PRIVACY_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as Partial<PrivacySettings>;
+      privacySettings.value = { ...DEFAULT_PRIVACY_SETTINGS, ...parsed };
+    }
+  } catch { /* ignore */ }
+};
+
+const savePrivacySettings = () => {
+  localStorage.setItem(PRIVACY_STORAGE_KEY, JSON.stringify(privacySettings.value));
+  emit('privacy-changed', { ...privacySettings.value });
+};
+
+const onPrivacyChange = () => {
+  savePrivacySettings();
+};
+
+const togglePrivacyPanel = () => {
+  showPrivacy.value = !showPrivacy.value;
+  showSync.value = false;
+  showAbout.value = false;
+};
+
+const adjustDuration = (delta: number) => {
+  const v = privacySettings.value.longPressDuration + delta;
+  privacySettings.value.longPressDuration = Math.max(300, Math.min(5000, v));
+  savePrivacySettings();
+};
+
+const setMaskMode = (mode: PrivacyMaskMode) => {
+  privacySettings.value.maskMode = mode;
+  savePrivacySettings();
+};
+
+const pickImage = () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    // 限制 2MB
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('图片大小不能超过 2MB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      privacySettings.value.maskImage = reader.result as string;
+      savePrivacySettings();
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+};
+
 const toggleAbout = () => {
   showAbout.value = !showAbout.value;
   showSync.value = false;
+  showPrivacy.value = false;
   if (showAbout.value) {
     checkForUpdate();
   }
@@ -205,6 +373,7 @@ onMounted(async () => {
     autostart.value = false;
   }
   loading.value = false;
+  loadPrivacySettings();
 });
 
 const onAutostartChange = async () => {
@@ -454,5 +623,198 @@ const onAutostartChange = async () => {
 
 .btn-retry:hover {
   background: rgba(255, 255, 255, 0.18);
+}
+
+/* ---- 隐私设置区域 ---- */
+
+.privacy-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 12px;
+  animation: fadeIn 0.15s ease;
+}
+
+.privacy-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.privacy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+}
+
+.privacy-row.image-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.privacy-label {
+  font-size: 12px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+/* 时长控制 */
+.duration-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dur-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  padding: 0;
+}
+
+.dur-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.dur-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.dur-value {
+  font-size: 12px;
+  font-weight: 500;
+  min-width: 36px;
+  text-align: center;
+}
+
+/* 遮罩模式选择 */
+.mask-mode-group {
+  display: flex;
+  gap: 4px;
+}
+
+.mask-mode-btn {
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mask-mode-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.mask-mode-btn.active {
+  background: rgba(45, 106, 79, 0.5);
+  border-color: rgba(45, 106, 79, 0.8);
+  color: white;
+}
+
+/* 图片上传 */
+.image-upload-area {
+  width: 100%;
+}
+
+.image-preview {
+  width: 100%;
+  height: 80px;
+  background-size: cover;
+  background-position: center;
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.image-overlay-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.2s;
+  font-size: 11px;
+  color: white;
+}
+
+.image-preview:hover .image-overlay-hint {
+  opacity: 1;
+}
+
+.pick-image-btn {
+  width: 100%;
+  padding: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+.pick-image-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* ---- 内联 Toast ---- */
+.inline-toast {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(220, 60, 60, 0.85);
+  color: white;
+  font-size: 12px;
+  padding: 6px 16px;
+  border-radius: 6px;
+  z-index: 9999;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.toast-enter-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.toast-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+}
+
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-4px);
 }
 </style>
