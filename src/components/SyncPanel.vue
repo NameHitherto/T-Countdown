@@ -90,8 +90,16 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import {
+  JIANGUOYUN_SERVER,
+  clearWebDavConfig,
+  downloadCountdownItems,
+  loadWebDavConfig,
+  saveWebDavConfig,
+  testWebDav,
+  uploadCountdownItems,
+} from '../services/syncService';
 import type { CountdownItemData } from '../types/countdown';
 
 const props = defineProps<{
@@ -116,8 +124,6 @@ const messageType = ref<'success' | 'error'>('success');
 const savedServer = ref('');
 const savedEmail = ref('');
 
-const JIANGUOYUN_SERVER = 'https://dav.jianguoyun.com/dav/';
-
 // ---- 计算属性 ----
 
 const canTest = computed(() => email.value.trim().length > 0 && appPassword.value.length > 0);
@@ -133,7 +139,7 @@ const maskedEmail = computed(() => {
 
 onMounted(async () => {
   try {
-    const result = await invoke<[string, string] | null>('load_webdav_config');
+    const result = await loadWebDavConfig();
     if (result) {
       savedServer.value = result[0];
       savedEmail.value = result[1];
@@ -166,18 +172,10 @@ const handleTestAndSave = async () => {
   message.value = '';
 
   try {
-    await invoke('test_webdav', {
-      server: JIANGUOYUN_SERVER,
-      username: email.value.trim(),
-      password: appPassword.value,
-    });
+    await testWebDav(email.value.trim(), appPassword.value);
 
     // 测试成功，保存配置
-    await invoke('save_webdav_config', {
-      server: JIANGUOYUN_SERVER,
-      username: email.value.trim(),
-      password: appPassword.value,
-    });
+    await saveWebDavConfig(email.value.trim(), appPassword.value);
 
     savedServer.value = JIANGUOYUN_SERVER;
     savedEmail.value = email.value.trim();
@@ -197,8 +195,7 @@ const handleUpload = async () => {
   message.value = '';
 
   try {
-    const json = JSON.stringify(props.items);
-    await invoke('webdav_upload', { json });
+    await uploadCountdownItems(props.items);
     showMessage('上传成功', 'success');
   } catch (e: any) {
     showMessage(e?.toString() || '上传失败', 'error');
@@ -213,14 +210,7 @@ const handleDownload = async () => {
   message.value = '';
 
   try {
-    const json = await invoke<string>('webdav_download');
-    const remoteItems = JSON.parse(json) as CountdownItemData[];
-
-    // 兼容旧数据
-    for (const item of remoteItems) {
-      if (!item.status) item.status = 'active';
-    }
-
+    const remoteItems = await downloadCountdownItems();
     emit('synced', remoteItems);
     showMessage('下载成功，已更新本地数据', 'success');
   } catch (e: any) {
@@ -232,7 +222,7 @@ const handleDownload = async () => {
 
 const handleUnbind = async () => {
   try {
-    await invoke('clear_webdav_config');
+    await clearWebDavConfig();
     isConfigured.value = false;
     savedServer.value = '';
     savedEmail.value = '';

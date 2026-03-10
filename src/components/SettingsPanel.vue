@@ -184,10 +184,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { getVersion } from '@tauri-apps/api/app';
-import { check, type Update } from '@tauri-apps/plugin-updater';
 import SyncPanel from './SyncPanel.vue';
+import type { Update } from '@tauri-apps/plugin-updater';
+import { getAutostartStatus, setAutostartStatus } from '../services/systemService';
+import {
+  checkForAppUpdate,
+  downloadAndInstallUpdate,
+  getAppVersion,
+} from '../services/updateService';
 import type { CountdownItemData, PrivacySettings, PrivacyMaskMode } from '../types/countdown';
 import { DEFAULT_PRIVACY_SETTINGS } from '../types/countdown';
 
@@ -298,7 +302,7 @@ const checkForUpdate = async () => {
   pendingUpdate = null;
 
   try {
-    const update = await check();
+    const update = await checkForAppUpdate();
     if (update) {
       updateAvailable.value = true;
       updateVersion.value = update.version;
@@ -318,25 +322,8 @@ const downloadAndInstall = async () => {
   updateProgress.value = '正在下载...';
 
   try {
-    let downloaded = 0;
-    let contentLength = 0;
-
-    await pendingUpdate.downloadAndInstall((event) => {
-      switch (event.event) {
-        case 'Started':
-          contentLength = event.data.contentLength ?? 0;
-          break;
-        case 'Progress':
-          downloaded += event.data.chunkLength;
-          if (contentLength > 0) {
-            const pct = Math.round((downloaded / contentLength) * 100);
-            updateProgress.value = `下载中 ${pct}%`;
-          }
-          break;
-        case 'Finished':
-          updateProgress.value = '正在安装...';
-          break;
-      }
+    await downloadAndInstallUpdate(pendingUpdate, (message) => {
+      updateProgress.value = message;
     });
 
     // 安装完成后需要重启
@@ -351,12 +338,12 @@ const downloadAndInstall = async () => {
 
 onMounted(async () => {
   try {
-    appVersion.value = await getVersion();
+    appVersion.value = await getAppVersion();
   } catch {
     appVersion.value = '未知';
   }
   try {
-    autostart.value = await invoke<boolean>('get_autostart');
+    autostart.value = await getAutostartStatus();
   } catch {
     autostart.value = false;
   }
@@ -370,7 +357,7 @@ watch(() => props.privacySettings, (settings) => {
 const onAutostartChange = async () => {
   const target = autostart.value;
   try {
-    await invoke('set_autostart', { enable: target });
+    await setAutostartStatus(target);
   } catch (e) {
     // 设置失败，回滚状态
     autostart.value = !target;

@@ -39,3 +39,12 @@ export const DEFAULT_PRIVACY_SETTINGS: PrivacySettings = {
   maskMode: 'blur',
   maskImage: '',
 };
+
+export type AppView = 'list' | 'settings';
+
+export interface WindowState {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
