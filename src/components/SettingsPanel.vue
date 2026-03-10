@@ -183,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { check, type Update } from '@tauri-apps/plugin-updater';
@@ -191,10 +191,9 @@ import SyncPanel from './SyncPanel.vue';
 import type { CountdownItemData, PrivacySettings, PrivacyMaskMode } from '../types/countdown';
 import { DEFAULT_PRIVACY_SETTINGS } from '../types/countdown';
 
-const PRIVACY_STORAGE_KEY = 't-countdown-privacy-settings';
-
-defineProps<{
+const props = defineProps<{
   items: CountdownItemData[];
+  privacySettings: PrivacySettings;
 }>();
 
 const emit = defineEmits<{
@@ -235,23 +234,12 @@ let pendingUpdate: Update | null = null;
 
 const privacySettings = ref<PrivacySettings>({ ...DEFAULT_PRIVACY_SETTINGS });
 
-const loadPrivacySettings = () => {
-  try {
-    const saved = localStorage.getItem(PRIVACY_STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved) as Partial<PrivacySettings>;
-      privacySettings.value = { ...DEFAULT_PRIVACY_SETTINGS, ...parsed };
-    }
-  } catch { /* ignore */ }
-};
-
-const savePrivacySettings = () => {
-  localStorage.setItem(PRIVACY_STORAGE_KEY, JSON.stringify(privacySettings.value));
+const emitPrivacyChanged = () => {
   emit('privacy-changed', { ...privacySettings.value });
 };
 
 const onPrivacyChange = () => {
-  savePrivacySettings();
+  emitPrivacyChanged();
 };
 
 const togglePrivacyPanel = () => {
@@ -263,12 +251,12 @@ const togglePrivacyPanel = () => {
 const adjustDuration = (delta: number) => {
   const v = privacySettings.value.longPressDuration + delta;
   privacySettings.value.longPressDuration = Math.max(300, Math.min(5000, v));
-  savePrivacySettings();
+  emitPrivacyChanged();
 };
 
 const setMaskMode = (mode: PrivacyMaskMode) => {
   privacySettings.value.maskMode = mode;
-  savePrivacySettings();
+  emitPrivacyChanged();
 };
 
 const pickImage = () => {
@@ -286,7 +274,7 @@ const pickImage = () => {
     const reader = new FileReader();
     reader.onload = () => {
       privacySettings.value.maskImage = reader.result as string;
-      savePrivacySettings();
+      emitPrivacyChanged();
     };
     reader.readAsDataURL(file);
   };
@@ -373,8 +361,11 @@ onMounted(async () => {
     autostart.value = false;
   }
   loading.value = false;
-  loadPrivacySettings();
 });
+
+watch(() => props.privacySettings, (settings) => {
+  privacySettings.value = { ...DEFAULT_PRIVACY_SETTINGS, ...settings };
+}, { deep: true, immediate: true });
 
 const onAutostartChange = async () => {
   const target = autostart.value;

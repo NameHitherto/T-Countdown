@@ -62,13 +62,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import type { PrivacySettings } from '../types/countdown';
 
 const props = defineProps<{
   active: boolean;
   spreading: boolean;
   spreadProgress: number; // 0~1
+  spreadOrigin: { x: number; y: number };
   settings: PrivacySettings;
 }>();
 
@@ -99,14 +100,26 @@ const updateContainerSize = () => {
 
 onMounted(updateContainerSize);
 
+watch(() => props.spreading, (spreading) => {
+  if (spreading) {
+    updateContainerSize();
+  }
+});
+
+watch(() => props.active, (active) => {
+  if (active) {
+    updateContainerSize();
+  }
+});
+
 // 对角线长度 = 从右下角到左上角的距离（确保圆能覆盖整个窗口）
 const diagonal = computed(() => {
   return Math.sqrt(containerW.value ** 2 + containerH.value ** 2);
 });
 
 // 蔓延圆心 px
-const anchorX = computed(() => containerW.value - 24);
-const anchorY = computed(() => containerH.value - 24);
+const anchorX = computed(() => props.spreadOrigin.x || containerW.value - 24);
+const anchorY = computed(() => props.spreadOrigin.y || containerH.value - 24);
 const spreadR = computed(() => props.spreadProgress * diagonal.value);
 
 // ========== 蔓延动画样式 ==========
@@ -173,7 +186,12 @@ const startReveal = () => {
   revealRaf = requestAnimationFrame(animate);
 };
 
+onMounted(() => {
+  window.addEventListener('resize', updateContainerSize);
+});
+
 onUnmounted(() => {
+  window.removeEventListener('resize', updateContainerSize);
   if (revealRaf) cancelAnimationFrame(revealRaf);
 });
 </script>

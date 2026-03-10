@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="widgetContainer"
     class="widget-container"
     :class="{ collapsed: isCollapsed, locked: isLocked }"
     @contextmenu.prevent
@@ -94,6 +95,7 @@
       <div class="list-container" v-else-if="currentView === 'settings'">
         <SettingsPanel
           :items="countdownItems"
+          :privacy-settings="privacySettings"
           @synced="handleSynced"
           @config-changed="handleSyncConfigChanged"
           @privacy-changed="handlePrivacyChanged"
@@ -104,6 +106,7 @@
 
     <!-- 隐私模式按钮（右下角） -->
     <button
+      ref="privacyTriggerBtn"
       v-if="privacySettings.enabled && !isCollapsed && !isPrivacyActive"
       class="privacy-trigger-btn"
       :class="{ pressing: isLongPressing }"
@@ -123,6 +126,7 @@
       :active="isPrivacyActive"
       :spreading="isLongPressing"
       :spread-progress="spreadProgress"
+      :spread-origin="privacySpreadOrigin"
       :settings="privacySettings"
       @close="closeWindow"
       @deactivate="deactivatePrivacy"
@@ -176,6 +180,9 @@ const isPrivacyActive = ref(false);
 const isLongPressing = ref(false);
 const spreadProgress = ref(0);
 const revealProgress = ref(0);
+const widgetContainer = ref<HTMLElement | null>(null);
+const privacyTriggerBtn = ref<HTMLButtonElement | null>(null);
+const privacySpreadOrigin = ref({ x: 0, y: 0 });
 const maxBlur = 4; // 最大模糊半径（px）
 let longPressRaf: number | null = null;
 let longPressStartTime = 0;
@@ -346,12 +353,31 @@ const loadPrivacySettings = () => {
   } catch { /* ignore */ }
 };
 
-const handlePrivacyChanged = (settings: PrivacySettings) => {
-  privacySettings.value = settings;
+const savePrivacySettings = () => {
+  localStorage.setItem(PRIVACY_STORAGE_KEY, JSON.stringify(privacySettings.value));
 };
 
-const onPrivacyBtnDown = () => {
+const handlePrivacyChanged = (settings: PrivacySettings) => {
+  privacySettings.value = { ...settings };
+};
+
+const updatePrivacySpreadOrigin = (triggerEl?: HTMLElement | null) => {
+  const containerEl = widgetContainer.value;
+  const sourceEl = triggerEl ?? privacyTriggerBtn.value;
+  if (!containerEl || !sourceEl) return;
+
+  const containerRect = containerEl.getBoundingClientRect();
+  const triggerRect = sourceEl.getBoundingClientRect();
+
+  privacySpreadOrigin.value = {
+    x: triggerRect.left - containerRect.left + triggerRect.width / 2,
+    y: triggerRect.top - containerRect.top + triggerRect.height / 2,
+  };
+};
+
+const onPrivacyBtnDown = (event: MouseEvent) => {
   if (isPrivacyActive.value) return;
+  updatePrivacySpreadOrigin(event.currentTarget as HTMLElement | null);
   isLongPressing.value = true;
   spreadProgress.value = 0;
   longPressStartTime = performance.now();
@@ -531,6 +557,10 @@ watch(countdownItems, () => {
   scheduleDebouncedSync();
 }, { deep: true });
 
+watch(privacySettings, () => {
+  savePrivacySettings();
+}, { deep: true });
+
 // ========== 定时刷新 & 生命周期 ==========
 
 onMounted(async () => {
@@ -570,7 +600,7 @@ onUnmounted(() => {
   position: relative;
   width: 100vw;
   height: 100vh;
-  padding: 15px;
+  padding: 12px;
   background: rgba(20, 20, 20, 0.35);
   border-radius: 6px;
   color: white;
