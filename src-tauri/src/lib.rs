@@ -3,6 +3,9 @@ use std::path::PathBuf;
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 
+#[cfg(windows)]
+mod desktop_embed;
+
 // ========== 常量 ==========
 
 const ENCRYPT_KEY: &[u8] = b"t-countdown-2024-encrypt-key!@#$";
@@ -428,6 +431,18 @@ pub fn run() {
         .setup(|app| {
             // 系统托盘
             setup_tray(app)?;
+
+            // 将窗口嵌入桌面层（兼容 Wallpaper Engine）
+            #[cfg(windows)]
+            {
+                use tauri::Manager;
+                if let Some(win) = app.webview_windows().get("main") {
+                    if let Ok(hwnd) = win.hwnd() {
+                        desktop_embed::embed_to_desktop(hwnd);
+                    }
+                }
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())
