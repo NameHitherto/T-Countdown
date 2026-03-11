@@ -3746,6 +3746,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tokio",
  "ureq",
+ "url",
  "windows",
  "winreg 0.52.0",
 ]

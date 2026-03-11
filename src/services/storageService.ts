@@ -1,10 +1,11 @@
 import {
   LOCK_STATE_STORAGE_KEY,
   PRIVACY_SETTINGS_STORAGE_KEY,
+  UPDATE_PROXY_STORAGE_KEY,
   WINDOW_STATE_STORAGE_KEY,
 } from '../constants/app';
-import type { PrivacySettings, WindowState } from '../types/countdown';
-import { DEFAULT_PRIVACY_SETTINGS } from '../types/countdown';
+import type { PrivacySettings, UpdateProxySettings, WindowState } from '../types/countdown';
+import { DEFAULT_PRIVACY_SETTINGS, DEFAULT_UPDATE_PROXY_SETTINGS } from '../types/countdown';
 
 const readJson = <T>(key: string): T | null => {
   try {
@@ -42,4 +43,13 @@ export const loadPrivacySettings = (): PrivacySettings => {
 
 export const savePrivacySettings = (settings: PrivacySettings) => {
   writeJson(PRIVACY_SETTINGS_STORAGE_KEY, settings);
+};
+
+export const loadUpdateProxySettings = (): UpdateProxySettings => {
+  const saved = readJson<Partial<UpdateProxySettings>>(UPDATE_PROXY_STORAGE_KEY);
+  return { ...DEFAULT_UPDATE_PROXY_SETTINGS, ...saved };
+};
+
+export const saveUpdateProxySettings = (settings: UpdateProxySettings) => {
+  writeJson(UPDATE_PROXY_STORAGE_KEY, settings);
 };

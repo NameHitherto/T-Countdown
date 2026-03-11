@@ -5,6 +5,7 @@ export const MIN_HEIGHT = 200;
 export const WINDOW_STATE_STORAGE_KEY = 't-countdown-window-state';
 export const LOCK_STATE_STORAGE_KEY = 't-countdown-lock-state';
 export const PRIVACY_SETTINGS_STORAGE_KEY = 't-countdown-privacy-settings';
+export const UPDATE_PROXY_STORAGE_KEY = 't-countdown-update-proxy-settings';
 
 export const DEFAULT_WINDOW_SIZE = {
   width: 320,
