@@ -485,7 +485,7 @@ const onUpdateProxyPortBlur = () => {
 .settings-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: clamp(10px, 4vw, 14px);
   padding: 4px 2px;
   animation: fadeIn 0.15s ease;
 }
@@ -498,10 +498,11 @@ const onUpdateProxyPortBlur = () => {
 .panel-header {
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
 .panel-title {
-  font-size: 14px;
+  font-size: clamp(13px, 4.4vw, 14px);
   font-weight: 600;
 }
 
@@ -515,7 +516,8 @@ const onUpdateProxyPortBlur = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: clamp(8px, 3vw, 10px) clamp(10px, 3.6vw, 12px);
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   transition: background 0.15s;
@@ -529,16 +531,21 @@ const onUpdateProxyPortBlur = () => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
 .setting-name {
-  font-size: 13px;
+  font-size: clamp(12px, 4vw, 13px);
   font-weight: 500;
+  line-height: 1.25;
 }
 
 .setting-desc {
-  font-size: 10px;
+  font-size: clamp(10px, 3.4vw, 11px);
   opacity: 0.45;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 /* ---- Toggle 开关 ---- */
@@ -648,18 +655,20 @@ const onUpdateProxyPortBlur = () => {
 }
 
 .proxy-label {
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   opacity: 0.7;
+  min-width: 0;
 }
 
 .proxy-input {
-  width: 96px;
+  width: min(100%, 96px);
+  min-width: 0;
   padding: 6px 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.06);
   color: white;
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   text-align: right;
   outline: none;
 }
@@ -693,19 +702,23 @@ const onUpdateProxyPortBlur = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 6px 12px;
   background: rgba(255, 255, 255, 0.04);
   border-radius: 6px;
 }
 
 .about-label {
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   opacity: 0.5;
 }
 
 .about-value {
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   font-weight: 500;
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .update-area {
@@ -719,7 +732,7 @@ const onUpdateProxyPortBlur = () => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
 }
 
 .update-checking {
@@ -748,7 +761,7 @@ const onUpdateProxyPortBlur = () => {
   padding: 4px 12px;
   border: none;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: clamp(10px, 3.6vw, 11px);
   cursor: pointer;
   transition: background 0.15s;
   flex-shrink: 0;
@@ -790,6 +803,7 @@ const onUpdateProxyPortBlur = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.04);
   border-radius: 6px;
@@ -802,7 +816,7 @@ const onUpdateProxyPortBlur = () => {
 }
 
 .privacy-label {
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   opacity: 0.7;
   flex-shrink: 0;
 }
@@ -842,7 +856,7 @@ const onUpdateProxyPortBlur = () => {
 }
 
 .dur-value {
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   font-weight: 500;
   min-width: 36px;
   text-align: center;
@@ -851,6 +865,8 @@ const onUpdateProxyPortBlur = () => {
 /* 遮罩模式选择 */
 .mask-mode-group {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 4px;
 }
 
@@ -860,7 +876,7 @@ const onUpdateProxyPortBlur = () => {
   border-radius: 6px;
   background: transparent;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
+  font-size: clamp(10px, 3.6vw, 11px);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -901,7 +917,7 @@ const onUpdateProxyPortBlur = () => {
   background: rgba(0, 0, 0, 0.5);
   opacity: 0;
   transition: opacity 0.2s;
-  font-size: 11px;
+  font-size: clamp(10px, 3.6vw, 11px);
   color: white;
 }
 
@@ -916,7 +932,7 @@ const onUpdateProxyPortBlur = () => {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.03);
   color: rgba(255, 255, 255, 0.5);
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -929,6 +945,44 @@ const onUpdateProxyPortBlur = () => {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.35);
   color: rgba(255, 255, 255, 0.75);
+}
+
+@media (max-width: 300px) {
+  .setting-item,
+  .proxy-row,
+  .privacy-row,
+  .about-row,
+  .update-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toggle,
+  .chevron,
+  .proxy-input,
+  .duration-control,
+  .mask-mode-group,
+  .btn-update,
+  .btn-retry {
+    align-self: stretch;
+  }
+
+  .proxy-input,
+  .btn-update,
+  .btn-retry {
+    width: 100%;
+    max-width: none;
+    text-align: left;
+  }
+
+  .duration-control,
+  .mask-mode-group {
+    justify-content: space-between;
+  }
+
+  .about-value {
+    text-align: left;
+  }
 }
 
 /* ---- 内联 Toast ---- */

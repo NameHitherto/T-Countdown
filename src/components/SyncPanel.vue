@@ -346,7 +346,7 @@ const handleUnbind = async () => {
 .sync-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: clamp(10px, 4vw, 12px);
   padding: 4px 2px;
   animation: fadeIn 0.15s ease;
 }
@@ -360,18 +360,20 @@ const handleUnbind = async () => {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .panel-title {
-  font-size: 14px;
+  font-size: clamp(13px, 4.4vw, 14px);
   font-weight: 600;
 }
 
 .panel-desc {
-  font-size: 11px;
+  font-size: clamp(10px, 3.6vw, 11px);
   opacity: 0.55;
   margin: 0;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .proxy-settings {
@@ -385,7 +387,7 @@ const handleUnbind = async () => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 10px;
+  padding: clamp(8px, 3vw, 10px);
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
 }
@@ -399,27 +401,31 @@ const handleUnbind = async () => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
 .proxy-title {
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   font-weight: 500;
 }
 
 .proxy-desc,
 .proxy-label {
-  font-size: 10px;
+  font-size: clamp(10px, 3.4vw, 11px);
   opacity: 0.5;
+  overflow-wrap: anywhere;
 }
 
 .proxy-input {
-  width: 96px;
+  width: min(100%, 96px);
+  min-width: 0;
   padding: 6px 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
   color: white;
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   text-align: right;
 }
 
@@ -479,14 +485,16 @@ const handleUnbind = async () => {
 .link-btn {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
   background: none;
   border: none;
   color: rgba(120, 180, 255, 0.9);
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   cursor: pointer;
   padding: 4px 0;
   transition: color 0.2s;
+  text-align: left;
 }
 
 .link-btn:hover {
@@ -500,7 +508,7 @@ const handleUnbind = async () => {
 }
 
 .field-label {
-  font-size: 10px;
+  font-size: clamp(10px, 3.4vw, 11px);
   opacity: 0.45;
   padding-left: 2px;
 }
@@ -512,7 +520,7 @@ const handleUnbind = async () => {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
   color: white;
-  font-size: 13px;
+  font-size: clamp(12px, 4vw, 13px);
   transition: border-color 0.2s;
 }
 
@@ -527,6 +535,7 @@ const handleUnbind = async () => {
 .form-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -534,7 +543,7 @@ const handleUnbind = async () => {
   padding: 5px 14px;
   border: none;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -568,11 +577,12 @@ const handleUnbind = async () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   opacity: 0.7;
   padding: 6px 10px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
+  overflow-wrap: anywhere;
 }
 
 .sync-actions {
@@ -592,7 +602,7 @@ const handleUnbind = async () => {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.85);
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
 }
@@ -611,7 +621,7 @@ const handleUnbind = async () => {
   background: none;
   border: none;
   color: rgba(255, 120, 120, 0.7);
-  font-size: 11px;
+  font-size: clamp(10px, 3.6vw, 11px);
   cursor: pointer;
   padding: 4px 0;
   text-align: left;
@@ -625,7 +635,7 @@ const handleUnbind = async () => {
 /* ---- 消息 ---- */
 
 .msg {
-  font-size: 11px;
+  font-size: clamp(10px, 3.6vw, 11px);
   padding: 6px 10px;
   border-radius: 6px;
   animation: fadeIn 0.15s ease;
@@ -639,5 +649,28 @@ const handleUnbind = async () => {
 .msg.error {
   background: rgba(220, 50, 50, 0.15);
   color: rgba(255, 150, 150, 0.95);
+}
+
+@media (max-width: 300px) {
+  .proxy-row,
+  .account-info,
+  .form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toggle,
+  .proxy-input,
+  .btn,
+  .link-btn {
+    align-self: stretch;
+  }
+
+  .proxy-input,
+  .btn {
+    width: 100%;
+    max-width: none;
+    text-align: left;
+  }
 }
 </style>

@@ -233,7 +233,7 @@ onUnmounted(() => {
   position: relative;
   width: 100vw;
   height: 100vh;
-  padding: 12px;
+  padding: clamp(8px, 3.2vw, 12px);
   background: rgba(20, 20, 20, 0.35);
   border-radius: 6px;
   color: white;
@@ -248,6 +248,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   transition: filter 0.05s linear;
 }
@@ -257,6 +258,8 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
+  gap: 8px;
+  min-width: 0;
   cursor: grab;
 }
 
@@ -274,19 +277,26 @@ onUnmounted(() => {
 }
 
 .title {
+  flex: 1;
+  min-width: 0;
   font-weight: bold;
-  font-size: 16px;
+  font-size: clamp(13px, 5vw, 16px);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-actions {
   display: flex;
-  gap: 6px;
+  flex-shrink: 0;
+  gap: clamp(4px, 1.8vw, 6px);
   align-items: center;
 }
 
 .icon-btn {
-  width: 24px;
-  height: 24px;
+  width: clamp(20px, 7vw, 24px);
+  height: clamp(20px, 7vw, 24px);
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.12);
@@ -297,6 +307,12 @@ onUnmounted(() => {
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
   padding: 0;
+}
+
+.icon-btn svg {
+  width: clamp(12px, 4vw, 14px);
+  height: clamp(12px, 4vw, 14px);
+  flex-shrink: 0;
 }
 
 .icon-btn:hover {
@@ -320,7 +336,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  margin-top: 15px;
+  margin-top: clamp(10px, 4vw, 15px);
 }
 
 .list-container {
@@ -336,8 +352,68 @@ onUnmounted(() => {
 .empty-state {
   text-align: center;
   padding: 40px 0;
-  font-size: 13px;
+  font-size: clamp(11px, 4vw, 13px);
   opacity: 0.4;
+}
+
+.collapsed {
+  padding: clamp(6px, 2.4vw, 10px);
+}
+
+.collapsed .header {
+  gap: clamp(6px, 2vw, 8px);
+}
+
+.collapsed .title {
+  font-size: clamp(12px, 4.4vw, 14px);
+}
+
+@media (max-width: 300px) {
+  .header {
+    gap: 6px;
+  }
+
+  .title {
+    font-size: 14px;
+  }
+
+  .header-actions {
+    gap: 4px;
+  }
+
+  .icon-btn {
+    width: 22px;
+    height: 22px;
+  }
+
+  .icon-btn svg {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+@media (max-width: 260px) {
+  .widget-container {
+    padding: 7px;
+  }
+
+  .title {
+    font-size: 13px;
+  }
+
+  .collapsed .title {
+    font-size: 12px;
+  }
+
+  .icon-btn {
+    width: 20px;
+    height: 20px;
+  }
+
+  .icon-btn svg {
+    width: 11px;
+    height: 11px;
+  }
 }
 
 /* ---- 隐私模式触发按钮 ---- */
