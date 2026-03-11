@@ -243,11 +243,6 @@ const openJianguoyun = async () => {
 };
 
 const onProxyToggle = async () => {
-  if (!proxySettings.value.enabled) {
-    proxySettings.value.port = '';
-    proxyPortInput.value = '';
-  }
-
   try {
     await persistProxySettings();
   } catch (e: any) {

@@ -452,11 +452,6 @@ const persistUpdateProxySettings = () => {
 };
 
 const onUpdateProxyToggle = () => {
-  if (!updateProxySettings.value.enabled) {
-    updateProxySettings.value.port = '';
-    updateProxyPortInput.value = '';
-  }
-
   persistUpdateProxySettings();
 };
 
