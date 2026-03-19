@@ -1,6 +1,6 @@
 [package]
 name = "t-countdown"
-version = "0.4.1"
+version = "0.5.2"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -27,6 +27,7 @@ ureq = "2"
 base64 = "0.22"
 tokio = { version = "1", features = ["rt"] }
 tauri-plugin-updater = "2.10.0"
+url = "2"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

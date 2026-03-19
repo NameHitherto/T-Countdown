@@ -19,10 +19,14 @@ pub fn run() {
             commands::save_webdav_config,
             commands::load_webdav_config,
             commands::clear_webdav_config,
+            commands::save_webdav_proxy_config,
+            commands::load_webdav_proxy_config,
             commands::webdav_upload,
             commands::webdav_download,
             commands::get_autostart,
             commands::set_autostart,
+            commands::check_update,
+            commands::download_and_install_update,
         ])
         .setup(|app| {
             system::setup_tray(app)?;

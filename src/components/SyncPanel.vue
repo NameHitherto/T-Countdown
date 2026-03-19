@@ -8,6 +8,35 @@
 
       <p class="panel-desc">请先在坚果云官网开启第三方应用密码，再填入下方。</p>
 
+      <div class="proxy-settings">
+        <div class="proxy-row">
+          <div class="proxy-info">
+            <span class="proxy-title">云同步代理</span>
+            <span class="proxy-desc">
+              {{ activeProxyPort ? `当前同步使用 HTTP 代理端口 ${activeProxyPort}` : '未使用代理，且不会继承系统或其它代理软件设置' }}
+            </span>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" v-model="proxySettings.enabled" @change="onProxyToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div v-if="proxySettings.enabled" class="proxy-row proxy-row-input">
+          <span class="proxy-label">HTTP 代理端口</span>
+          <input
+            v-model="proxyPortInput"
+            class="proxy-input"
+            type="text"
+            inputmode="numeric"
+            maxlength="5"
+            placeholder="例如 7890"
+            @input="onProxyPortInput"
+            @blur="onProxyPortBlur"
+          />
+        </div>
+      </div>
+
       <button class="link-btn" @click="openJianguoyun">
         <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
           <path d="M5.5 2H3a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V8.5M8 2h4v4M6.5 7.5L12 2"
@@ -66,6 +95,35 @@
         <span>{{ maskedEmail }}</span>
       </div>
 
+      <div class="proxy-settings">
+        <div class="proxy-row">
+          <div class="proxy-info">
+            <span class="proxy-title">云同步代理</span>
+            <span class="proxy-desc">
+              {{ activeProxyPort ? `当前同步使用 HTTP 代理端口 ${activeProxyPort}` : '未使用代理，且不会继承系统或其它代理软件设置' }}
+            </span>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" v-model="proxySettings.enabled" @change="onProxyToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div v-if="proxySettings.enabled" class="proxy-row proxy-row-input">
+          <span class="proxy-label">HTTP 代理端口</span>
+          <input
+            v-model="proxyPortInput"
+            class="proxy-input"
+            type="text"
+            inputmode="numeric"
+            maxlength="5"
+            placeholder="例如 7890"
+            @input="onProxyPortInput"
+            @blur="onProxyPortBlur"
+          />
+        </div>
+      </div>
+
       <div class="sync-actions">
         <button class="btn btn-sync" :disabled="!!syncing" @click="handleUpload">
           <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
@@ -92,15 +150,18 @@
 import { ref, computed, onMounted } from 'vue';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
-  JIANGUOYUN_SERVER,
   clearWebDavConfig,
   downloadCountdownItems,
   loadWebDavConfig,
+  loadWebDavProxyConfig,
   saveWebDavConfig,
+  saveWebDavProxyConfig,
   testWebDav,
   uploadCountdownItems,
 } from '../services/syncService';
-import type { CountdownItemData } from '../types/countdown';
+import { getActiveProxyPort } from '../services/proxyService';
+import type { CountdownItemData, WebDavProxySettings } from '../types/countdown';
+import { DEFAULT_WEBDAV_PROXY_SETTINGS } from '../types/countdown';
 
 const props = defineProps<{
   items: CountdownItemData[];
@@ -121,8 +182,9 @@ const testing = ref(false);
 const syncing = ref<false | 'upload' | 'download'>(false);
 const message = ref('');
 const messageType = ref<'success' | 'error'>('success');
-const savedServer = ref('');
 const savedEmail = ref('');
+const proxySettings = ref<WebDavProxySettings>({ ...DEFAULT_WEBDAV_PROXY_SETTINGS });
+const proxyPortInput = ref('');
 
 // ---- 计算属性 ----
 
@@ -135,18 +197,28 @@ const maskedEmail = computed(() => {
   return e[0] + '***' + e.substring(at);
 });
 
+const activeProxyPort = computed(() => getActiveProxyPort(proxySettings.value));
+
 // ---- 初始化 ----
 
 onMounted(async () => {
   try {
     const result = await loadWebDavConfig();
     if (result) {
-      savedServer.value = result[0];
       savedEmail.value = result[1];
       isConfigured.value = true;
     }
   } catch {
     isConfigured.value = false;
+  }
+
+  try {
+    const proxyConfig = await loadWebDavProxyConfig();
+    proxySettings.value = proxyConfig;
+    proxyPortInput.value = proxyConfig.port;
+  } catch {
+    proxySettings.value = { ...DEFAULT_WEBDAV_PROXY_SETTINGS };
+    proxyPortInput.value = '';
   }
 });
 
@@ -158,11 +230,42 @@ const showMessage = (text: string, type: 'success' | 'error') => {
   setTimeout(() => { message.value = ''; }, 4000);
 };
 
+const persistProxySettings = async () => {
+  await saveWebDavProxyConfig(proxySettings.value);
+};
+
 const openJianguoyun = async () => {
   try {
     await openUrl('https://www.jianguoyun.com/d/home#/safety');
   } catch {
     showMessage('无法打开浏览器', 'error');
+  }
+};
+
+const onProxyToggle = async () => {
+  try {
+    await persistProxySettings();
+  } catch (e: any) {
+    showMessage(e?.toString() || '保存代理设置失败', 'error');
+  }
+};
+
+const onProxyPortInput = () => {
+  proxyPortInput.value = proxyPortInput.value.replace(/\D/g, '').slice(0, 5);
+  proxySettings.value.port = proxyPortInput.value;
+};
+
+const onProxyPortBlur = async () => {
+  if (proxyPortInput.value && !activeProxyPort.value) {
+    showMessage('请输入 1 到 65535 之间的代理端口', 'error');
+  }
+
+  proxySettings.value.port = proxyPortInput.value;
+
+  try {
+    await persistProxySettings();
+  } catch (e: any) {
+    showMessage(e?.toString() || '保存代理设置失败', 'error');
   }
 };
 
@@ -177,7 +280,6 @@ const handleTestAndSave = async () => {
     // 测试成功，保存配置
     await saveWebDavConfig(email.value.trim(), appPassword.value);
 
-    savedServer.value = JIANGUOYUN_SERVER;
     savedEmail.value = email.value.trim();
     isConfigured.value = true;
     emit('config-changed');
@@ -224,7 +326,6 @@ const handleUnbind = async () => {
   try {
     await clearWebDavConfig();
     isConfigured.value = false;
-    savedServer.value = '';
     savedEmail.value = '';
     email.value = '';
     appPassword.value = '';
@@ -240,7 +341,7 @@ const handleUnbind = async () => {
 .sync-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: clamp(10px, 4vw, 12px);
   padding: 4px 2px;
   animation: fadeIn 0.15s ease;
 }
@@ -254,31 +355,141 @@ const handleUnbind = async () => {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .panel-title {
-  font-size: 14px;
+  font-size: clamp(13px, 4.4vw, 14px);
   font-weight: 600;
 }
 
 .panel-desc {
-  font-size: 11px;
+  font-size: clamp(10px, 3.6vw, 11px);
   opacity: 0.55;
   margin: 0;
   line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.proxy-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proxy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: clamp(8px, 3vw, 10px);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.proxy-row-input {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.proxy-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.proxy-title {
+  font-size: clamp(11px, 3.8vw, 12px);
+  font-weight: 500;
+}
+
+.proxy-desc,
+.proxy-label {
+  font-size: clamp(10px, 3.4vw, 11px);
+  opacity: 0.5;
+  overflow-wrap: anywhere;
+}
+
+.proxy-input {
+  width: min(100%, 96px);
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+  font-size: clamp(11px, 3.8vw, 12px);
+  text-align: right;
+}
+
+.proxy-input::placeholder {
+  color: rgba(255, 255, 255, 0.28);
+}
+
+.proxy-input:focus {
+  border-color: rgba(120, 180, 255, 0.6);
+  outline: none;
+}
+
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  transition: background 0.25s;
+}
+
+.slider::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  bottom: 2px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle input:checked + .slider {
+  background: rgba(45, 106, 79, 0.7);
+}
+
+.toggle input:checked + .slider::before {
+  transform: translateX(16px);
+  background: white;
 }
 
 .link-btn {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
   background: none;
   border: none;
   color: rgba(120, 180, 255, 0.9);
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   cursor: pointer;
   padding: 4px 0;
   transition: color 0.2s;
+  text-align: left;
 }
 
 .link-btn:hover {
@@ -292,7 +503,7 @@ const handleUnbind = async () => {
 }
 
 .field-label {
-  font-size: 10px;
+  font-size: clamp(10px, 3.4vw, 11px);
   opacity: 0.45;
   padding-left: 2px;
 }
@@ -304,7 +515,7 @@ const handleUnbind = async () => {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
   color: white;
-  font-size: 13px;
+  font-size: clamp(12px, 4vw, 13px);
   transition: border-color 0.2s;
 }
 
@@ -319,6 +530,7 @@ const handleUnbind = async () => {
 .form-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -326,7 +538,7 @@ const handleUnbind = async () => {
   padding: 5px 14px;
   border: none;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -360,11 +572,12 @@ const handleUnbind = async () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   opacity: 0.7;
   padding: 6px 10px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
+  overflow-wrap: anywhere;
 }
 
 .sync-actions {
@@ -384,7 +597,7 @@ const handleUnbind = async () => {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.85);
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
 }
@@ -403,7 +616,7 @@ const handleUnbind = async () => {
   background: none;
   border: none;
   color: rgba(255, 120, 120, 0.7);
-  font-size: 11px;
+  font-size: clamp(10px, 3.6vw, 11px);
   cursor: pointer;
   padding: 4px 0;
   text-align: left;
@@ -417,7 +630,7 @@ const handleUnbind = async () => {
 /* ---- 消息 ---- */
 
 .msg {
-  font-size: 11px;
+  font-size: clamp(10px, 3.6vw, 11px);
   padding: 6px 10px;
   border-radius: 6px;
   animation: fadeIn 0.15s ease;
@@ -431,5 +644,28 @@ const handleUnbind = async () => {
 .msg.error {
   background: rgba(220, 50, 50, 0.15);
   color: rgba(255, 150, 150, 0.95);
+}
+
+@media (max-width: 300px) {
+  .proxy-row,
+  .account-info,
+  .form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toggle,
+  .proxy-input,
+  .btn,
+  .link-btn {
+    align-self: stretch;
+  }
+
+  .proxy-input,
+  .btn {
+    width: 100%;
+    max-width: none;
+    text-align: left;
+  }
 }
 </style>

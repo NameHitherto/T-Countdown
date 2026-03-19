@@ -1,70 +1,25 @@
 use base64::{engine::general_purpose, Engine as _};
 
-use crate::config::load_webdav_credentials;
+use crate::config::{load_webdav_credentials, load_webdav_proxy_config};
 
 fn make_auth_header(username: &str, password: &str) -> String {
     let creds = format!("{}:{}", username, password);
     format!("Basic {}", general_purpose::STANDARD.encode(creds.as_bytes()))
 }
 
-#[cfg(windows)]
-fn get_system_proxy() -> Option<String> {
-    use winreg::enums::*;
-    use winreg::RegKey;
-
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let settings = hkcu
-        .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
-        .ok()?;
-    let enabled: u32 = settings.get_value("ProxyEnable").ok()?;
-    if enabled == 0 {
-        return None;
-    }
-    let server: String = settings.get_value("ProxyServer").ok()?;
-    if server.is_empty() {
-        return None;
-    }
-    if server.contains('=') {
-        for part in server.split(';') {
-            let part = part.trim();
-            if let Some(addr) = part.strip_prefix("https=") {
-                return Some(format!("http://{}", addr));
-            }
-        }
-        for part in server.split(';') {
-            let part = part.trim();
-            if let Some(addr) = part.strip_prefix("http=") {
-                return Some(format!("http://{}", addr));
-            }
-        }
-        None
-    } else {
-        Some(format!("http://{}", server))
-    }
-}
-
-fn create_webdav_agent() -> ureq::Agent {
+fn create_webdav_agent() -> Result<ureq::Agent, String> {
     let mut builder = ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(15));
 
-    let proxy_url = std::env::var("HTTPS_PROXY")
-        .or_else(|_| std::env::var("https_proxy"))
-        .or_else(|_| std::env::var("HTTP_PROXY"))
-        .or_else(|_| std::env::var("http_proxy"))
-        .or_else(|_| std::env::var("ALL_PROXY"))
-        .or_else(|_| std::env::var("all_proxy"))
-        .ok()
-        .filter(|value| !value.is_empty());
-
-    #[cfg(windows)]
-    let proxy_url = proxy_url.or_else(get_system_proxy);
-
-    if let Some(url) = proxy_url {
-        if let Ok(proxy) = ureq::Proxy::new(&url) {
+    let proxy_config = load_webdav_proxy_config()?;
+    if proxy_config.enabled {
+        if let Some(port) = proxy_config.port {
+            let proxy = ureq::Proxy::new(&format!("http://127.0.0.1:{}", port))
+                .map_err(|e| format!("代理配置无效: {}", e))?;
             builder = builder.proxy(proxy);
         }
     }
 
-    builder.build()
+    Ok(builder.build())
 }
 
 pub async fn test_webdav(server: String, username: String, password: String) -> Result<(), String> {
@@ -75,7 +30,7 @@ pub async fn test_webdav(server: String, username: String, password: String) -> 
             format!("{}/", server)
         };
         let auth = make_auth_header(&username, &password);
-        let agent = create_webdav_agent();
+        let agent = create_webdav_agent()?;
 
         match agent
             .request("PROPFIND", &url)
@@ -110,7 +65,7 @@ pub async fn upload(json: String) -> Result<(), String> {
         };
         let folder_url = format!("{}T-Countdown/", base_url);
         let file_url = format!("{}data.json", folder_url);
-        let agent = create_webdav_agent();
+        let agent = create_webdav_agent()?;
 
         let _ = agent
             .request("MKCOL", &folder_url)
@@ -141,7 +96,7 @@ pub async fn download() -> Result<String, String> {
             format!("{}/", credentials.server)
         };
         let file_url = format!("{}T-Countdown/data.json", base_url);
-        let agent = create_webdav_agent();
+        let agent = create_webdav_agent()?;
 
         match agent.get(&file_url).set("Authorization", &auth).call() {
             Ok(resp) => {

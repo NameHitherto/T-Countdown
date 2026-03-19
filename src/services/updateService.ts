@@ -1,36 +1,36 @@
+import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
-import { check, type Update } from '@tauri-apps/plugin-updater';
+import type { UpdateProxySettings } from '../types/countdown';
+import { getActiveProxyPort } from './proxyService';
+
+export interface AppUpdateInfo {
+  version: string;
+  body?: string | null;
+}
+
+const getProxyPort = (settings: UpdateProxySettings) => {
+  const port = getActiveProxyPort(settings);
+  return port ? Number(port) : null;
+};
 
 export const getAppVersion = async () => {
   return getVersion();
 };
 
-export const checkForAppUpdate = async (): Promise<Update | null> => {
-  return check();
+export const checkForAppUpdate = async (
+  proxySettings: UpdateProxySettings,
+): Promise<AppUpdateInfo | null> => {
+  return invoke<AppUpdateInfo | null>('check_update', {
+    proxyPort: getProxyPort(proxySettings),
+  });
 };
 
 export const downloadAndInstallUpdate = async (
-  update: Update,
+  proxySettings: UpdateProxySettings,
   onProgress: (message: string) => void,
 ) => {
-  let downloaded = 0;
-  let contentLength = 0;
-
-  await update.downloadAndInstall((event) => {
-    switch (event.event) {
-      case 'Started':
-        contentLength = event.data.contentLength ?? 0;
-        break;
-      case 'Progress':
-        downloaded += event.data.chunkLength;
-        if (contentLength > 0) {
-          const percentage = Math.round((downloaded / contentLength) * 100);
-          onProgress(`下载中 ${percentage}%`);
-        }
-        break;
-      case 'Finished':
-        onProgress('正在安装...');
-        break;
-    }
+  onProgress('正在下载并安装...');
+  await invoke('download_and_install_update', {
+    proxyPort: getProxyPort(proxySettings),
   });
 };

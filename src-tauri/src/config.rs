@@ -2,7 +2,7 @@ use std::fs;
 
 use base64::{engine::general_purpose, Engine as _};
 
-use crate::models::{AppConfig, WebDavConfig, WebDavCredentials};
+use crate::models::{AppConfig, ProxyConfig, WebDavConfig, WebDavCredentials};
 use crate::storage::config_file_path;
 
 const ENCRYPT_KEY: &[u8] = b"t-countdown-2024-encrypt-key!@#$";
@@ -64,6 +64,19 @@ pub fn clear_webdav_config() -> Result<(), String> {
     let mut config = read_config();
     config.webdav = None;
     write_config(&config)
+}
+
+pub fn save_webdav_proxy_config(enabled: bool, port: Option<u16>) -> Result<(), String> {
+    let mut config = read_config();
+    config.webdav_proxy = ProxyConfig {
+        enabled,
+        port: if enabled { port } else { None },
+    };
+    write_config(&config)
+}
+
+pub fn load_webdav_proxy_config() -> Result<ProxyConfig, String> {
+    Ok(read_config().webdav_proxy)
 }
 
 pub fn load_webdav_credentials() -> Result<WebDavCredentials, String> {

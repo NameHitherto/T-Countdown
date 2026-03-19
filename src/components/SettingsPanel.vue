@@ -50,7 +50,7 @@
       </div>
 
       <!-- 云同步 -->
-      <div class="setting-item clickable" @click="showSync = !showSync; showAbout = false; showPrivacy = false">
+      <div class="setting-item clickable" @click="toggleSyncPanel">
         <div class="setting-info">
           <span class="setting-name">云同步</span>
           <span class="setting-desc">通过坚果云 WebDAV 同步数据</span>
@@ -60,11 +60,22 @@
         </svg>
       </div>
 
+      <!-- 检查更新 -->
+      <div class="setting-item clickable" @click="toggleUpdatePanel">
+        <div class="setting-info">
+          <span class="setting-name">检查更新</span>
+          <span class="setting-desc">检查新版本并下载安装</span>
+        </div>
+        <svg class="chevron" :class="{ expanded: showUpdate }" width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
       <!-- 关于 -->
       <div class="setting-item clickable" @click="toggleAbout">
         <div class="setting-info">
           <span class="setting-name">关于</span>
-          <span class="setting-desc">版本信息与软件更新</span>
+          <span class="setting-desc">版本信息与作者信息</span>
         </div>
         <svg class="chevron" :class="{ expanded: showAbout }" width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -137,20 +148,38 @@
       />
     </div>
 
-    <!-- 关于面板 -->
-    <div v-if="showAbout" class="about-section">
-      <div class="about-info">
-        <div class="about-row">
-          <span class="about-label">软件名称</span>
-          <span class="about-value">T-Countdown</span>
+    <!-- 检查更新面板 -->
+    <div v-if="showUpdate" class="update-section">
+      <div class="proxy-card">
+        <div class="proxy-row">
+          <div class="setting-info">
+            <span class="setting-name">更新代理</span>
+            <span class="setting-desc">
+              {{ activeProxyPort ? `当前更新使用 HTTP 代理端口 ${activeProxyPort}` : '未使用代理，且不会继承系统或其它代理软件设置' }}
+            </span>
+          </div>
+          <label class="toggle">
+            <input
+              type="checkbox"
+              v-model="updateProxySettings.enabled"
+              @change="onUpdateProxyToggle"
+            />
+            <span class="slider"></span>
+          </label>
         </div>
-        <div class="about-row">
-          <span class="about-label">当前版本</span>
-          <span class="about-value">v{{ appVersion }}</span>
-        </div>
-        <div class="about-row">
-          <span class="about-label">作者</span>
-          <span class="about-value">NameHitherto</span>
+
+        <div v-if="updateProxySettings.enabled" class="proxy-row">
+          <span class="proxy-label">HTTP 代理端口</span>
+          <input
+            v-model="updateProxyPortInput"
+            class="proxy-input"
+            type="text"
+            inputmode="numeric"
+            maxlength="5"
+            placeholder="例如 7890"
+            @input="onUpdateProxyPortInput"
+            @blur="onUpdateProxyPortBlur"
+          />
         </div>
       </div>
 
@@ -169,6 +198,25 @@
         </div>
         <div v-else class="update-status">
           <span class="update-latest">已是最新版本</span>
+          <button class="btn btn-retry" @click="checkForUpdate">重新检查</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 关于面板 -->
+    <div v-if="showAbout" class="about-section">
+      <div class="about-info">
+        <div class="about-row">
+          <span class="about-label">软件名称</span>
+          <span class="about-value">T-Countdown</span>
+        </div>
+        <div class="about-row">
+          <span class="about-label">当前版本</span>
+          <span class="about-value">v{{ appVersion }}</span>
+        </div>
+        <div class="about-row">
+          <span class="about-label">作者</span>
+          <span class="about-value">NameHitherto</span>
         </div>
       </div>
     </div>
@@ -183,17 +231,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import SyncPanel from './SyncPanel.vue';
-import type { Update } from '@tauri-apps/plugin-updater';
 import { getAutostartStatus, setAutostartStatus } from '../services/systemService';
 import {
   checkForAppUpdate,
   downloadAndInstallUpdate,
   getAppVersion,
+  type AppUpdateInfo,
 } from '../services/updateService';
-import type { CountdownItemData, PrivacySettings, PrivacyMaskMode } from '../types/countdown';
-import { DEFAULT_PRIVACY_SETTINGS } from '../types/countdown';
+import { getActiveProxyPort } from '../services/proxyService';
+import { loadUpdateProxySettings, saveUpdateProxySettings } from '../services/storageService';
+import type {
+  CountdownItemData,
+  PrivacySettings,
+  PrivacyMaskMode,
+  UpdateProxySettings,
+} from '../types/countdown';
+import { DEFAULT_PRIVACY_SETTINGS, DEFAULT_UPDATE_PROXY_SETTINGS } from '../types/countdown';
 
 const props = defineProps<{
   items: CountdownItemData[];
@@ -207,6 +262,7 @@ const emit = defineEmits<{
 }>();
 
 const showSync = ref(false);
+const showUpdate = ref(false);
 const showAbout = ref(false);
 const showPrivacy = ref(false);
 const autostart = ref(false);
@@ -232,7 +288,13 @@ const updateVersion = ref('');
 const updateError = ref('');
 const updateInstalling = ref(false);
 const updateProgress = ref('正在下载...');
-let pendingUpdate: Update | null = null;
+let pendingUpdate: AppUpdateInfo | null = null;
+
+// ---- 更新代理设置 ----
+
+const updateProxySettings = ref<UpdateProxySettings>({ ...DEFAULT_UPDATE_PROXY_SETTINGS });
+const updateProxyPortInput = ref('');
+const activeProxyPort = computed(() => getActiveProxyPort(updateProxySettings.value));
 
 // ---- 隐私模式设置 ----
 
@@ -249,7 +311,25 @@ const onPrivacyChange = () => {
 const togglePrivacyPanel = () => {
   showPrivacy.value = !showPrivacy.value;
   showSync.value = false;
+  showUpdate.value = false;
   showAbout.value = false;
+};
+
+const toggleSyncPanel = () => {
+  showSync.value = !showSync.value;
+  showPrivacy.value = false;
+  showUpdate.value = false;
+  showAbout.value = false;
+};
+
+const toggleUpdatePanel = () => {
+  showUpdate.value = !showUpdate.value;
+  showSync.value = false;
+  showPrivacy.value = false;
+  showAbout.value = false;
+  if (showUpdate.value) {
+    void checkForUpdate();
+  }
 };
 
 const adjustDuration = (delta: number) => {
@@ -288,10 +368,8 @@ const pickImage = () => {
 const toggleAbout = () => {
   showAbout.value = !showAbout.value;
   showSync.value = false;
+  showUpdate.value = false;
   showPrivacy.value = false;
-  if (showAbout.value) {
-    checkForUpdate();
-  }
 };
 
 const checkForUpdate = async () => {
@@ -302,7 +380,7 @@ const checkForUpdate = async () => {
   pendingUpdate = null;
 
   try {
-    const update = await checkForAppUpdate();
+    const update = await checkForAppUpdate(updateProxySettings.value);
     if (update) {
       updateAvailable.value = true;
       updateVersion.value = update.version;
@@ -322,7 +400,7 @@ const downloadAndInstall = async () => {
   updateProgress.value = '正在下载...';
 
   try {
-    await downloadAndInstallUpdate(pendingUpdate, (message) => {
+    await downloadAndInstallUpdate(updateProxySettings.value, (message) => {
       updateProgress.value = message;
     });
 
@@ -337,6 +415,10 @@ const downloadAndInstall = async () => {
 };
 
 onMounted(async () => {
+  const savedProxySettings = loadUpdateProxySettings();
+  updateProxySettings.value = savedProxySettings;
+  updateProxyPortInput.value = savedProxySettings.port;
+
   try {
     appVersion.value = await getAppVersion();
   } catch {
@@ -364,13 +446,41 @@ const onAutostartChange = async () => {
     console.error('设置开机自启失败:', e);
   }
 };
+
+const persistUpdateProxySettings = () => {
+  saveUpdateProxySettings(updateProxySettings.value);
+};
+
+const onUpdateProxyToggle = () => {
+  persistUpdateProxySettings();
+};
+
+const onUpdateProxyPortInput = () => {
+  updateProxyPortInput.value = updateProxyPortInput.value.replace(/\D/g, '').slice(0, 5);
+  updateProxySettings.value.port = updateProxyPortInput.value;
+  persistUpdateProxySettings();
+};
+
+const onUpdateProxyPortBlur = () => {
+  const currentPort = getActiveProxyPort({
+    ...updateProxySettings.value,
+    enabled: true,
+  });
+
+  if (updateProxyPortInput.value && !currentPort) {
+    showToast('请输入 1 到 65535 之间的代理端口');
+  }
+
+  updateProxySettings.value.port = updateProxyPortInput.value;
+  persistUpdateProxySettings();
+};
 </script>
 
 <style scoped>
 .settings-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: clamp(10px, 4vw, 14px);
   padding: 4px 2px;
   animation: fadeIn 0.15s ease;
 }
@@ -383,10 +493,11 @@ const onAutostartChange = async () => {
 .panel-header {
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
 .panel-title {
-  font-size: 14px;
+  font-size: clamp(13px, 4.4vw, 14px);
   font-weight: 600;
 }
 
@@ -400,7 +511,8 @@ const onAutostartChange = async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: clamp(8px, 3vw, 10px) clamp(10px, 3.6vw, 12px);
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   transition: background 0.15s;
@@ -414,16 +526,21 @@ const onAutostartChange = async () => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
 .setting-name {
-  font-size: 13px;
+  font-size: clamp(12px, 4vw, 13px);
   font-weight: 500;
+  line-height: 1.25;
 }
 
 .setting-desc {
-  font-size: 10px;
+  font-size: clamp(10px, 3.4vw, 11px);
   opacity: 0.45;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 /* ---- Toggle 开关 ---- */
@@ -503,6 +620,62 @@ const onAutostartChange = async () => {
   padding-top: 12px;
 }
 
+.update-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: fadeIn 0.15s ease;
+}
+
+.proxy-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proxy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+}
+
+.proxy-row + .proxy-row {
+  margin-top: 0;
+}
+
+.proxy-label {
+  font-size: clamp(11px, 3.8vw, 12px);
+  opacity: 0.7;
+  min-width: 0;
+}
+
+.proxy-input {
+  width: min(100%, 96px);
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+  font-size: clamp(11px, 3.8vw, 12px);
+  text-align: right;
+  outline: none;
+}
+
+.proxy-input::placeholder {
+  color: rgba(255, 255, 255, 0.28);
+}
+
+.proxy-input:focus {
+  border-color: rgba(120, 180, 255, 0.6);
+}
+
 /* ---- 关于区域 ---- */
 
 .about-section {
@@ -524,19 +697,23 @@ const onAutostartChange = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 6px 12px;
   background: rgba(255, 255, 255, 0.04);
   border-radius: 6px;
 }
 
 .about-label {
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   opacity: 0.5;
 }
 
 .about-value {
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   font-weight: 500;
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .update-area {
@@ -550,7 +727,7 @@ const onAutostartChange = async () => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
 }
 
 .update-checking {
@@ -579,7 +756,7 @@ const onAutostartChange = async () => {
   padding: 4px 12px;
   border: none;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: clamp(10px, 3.6vw, 11px);
   cursor: pointer;
   transition: background 0.15s;
   flex-shrink: 0;
@@ -621,6 +798,7 @@ const onAutostartChange = async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.04);
   border-radius: 6px;
@@ -633,7 +811,7 @@ const onAutostartChange = async () => {
 }
 
 .privacy-label {
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   opacity: 0.7;
   flex-shrink: 0;
 }
@@ -673,7 +851,7 @@ const onAutostartChange = async () => {
 }
 
 .dur-value {
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   font-weight: 500;
   min-width: 36px;
   text-align: center;
@@ -682,6 +860,8 @@ const onAutostartChange = async () => {
 /* 遮罩模式选择 */
 .mask-mode-group {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 4px;
 }
 
@@ -691,7 +871,7 @@ const onAutostartChange = async () => {
   border-radius: 6px;
   background: transparent;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
+  font-size: clamp(10px, 3.6vw, 11px);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -732,7 +912,7 @@ const onAutostartChange = async () => {
   background: rgba(0, 0, 0, 0.5);
   opacity: 0;
   transition: opacity 0.2s;
-  font-size: 11px;
+  font-size: clamp(10px, 3.6vw, 11px);
   color: white;
 }
 
@@ -747,7 +927,7 @@ const onAutostartChange = async () => {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.03);
   color: rgba(255, 255, 255, 0.5);
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -760,6 +940,44 @@ const onAutostartChange = async () => {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.35);
   color: rgba(255, 255, 255, 0.75);
+}
+
+@media (max-width: 300px) {
+  .setting-item,
+  .proxy-row,
+  .privacy-row,
+  .about-row,
+  .update-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toggle,
+  .chevron,
+  .proxy-input,
+  .duration-control,
+  .mask-mode-group,
+  .btn-update,
+  .btn-retry {
+    align-self: stretch;
+  }
+
+  .proxy-input,
+  .btn-update,
+  .btn-retry {
+    width: 100%;
+    max-width: none;
+    text-align: left;
+  }
+
+  .duration-control,
+  .mask-mode-group {
+    justify-content: space-between;
+  }
+
+  .about-value {
+    text-align: left;
+  }
 }
 
 /* ---- 内联 Toast ---- */

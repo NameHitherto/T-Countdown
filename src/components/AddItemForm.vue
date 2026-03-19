@@ -217,7 +217,7 @@ onMounted(async () => {
   background: rgba(255, 255, 255, 0.08);
   border: 1px dashed rgba(255, 255, 255, 0.25);
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: clamp(10px, 3.6vw, 12px) clamp(10px, 4vw, 14px);
   margin-bottom: 10px;
   display: flex;
   flex-direction: column;
@@ -237,7 +237,7 @@ onMounted(async () => {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
   color: white;
-  font-size: 13px;
+  font-size: clamp(12px, 4vw, 13px);
   transition: border-color 0.2s;
 }
 
@@ -266,6 +266,7 @@ onMounted(async () => {
   display: flex;
   align-items: start;
   gap: 8px;
+  min-width: 0;
 }
 
 .date-field {
@@ -273,16 +274,17 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  min-width: 0;
 }
 
 .field-label {
-  font-size: 10px;
+  font-size: clamp(10px, 3.4vw, 11px);
   opacity: 0.45;
   padding-left: 2px;
 }
 
 .sync-icon {
-  font-size: 14px;
+  font-size: clamp(12px, 4vw, 14px);
   opacity: 0.3;
   padding-top: 21px;
   flex-shrink: 0;
@@ -297,7 +299,7 @@ onMounted(async () => {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
   color: white;
-  font-size: 13px;
+  font-size: clamp(12px, 4vw, 13px);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -327,6 +329,7 @@ onMounted(async () => {
 
 .form-colors {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -352,6 +355,7 @@ onMounted(async () => {
 .form-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -359,7 +363,7 @@ onMounted(async () => {
   padding: 4px 14px;
   border: none;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: clamp(11px, 3.8vw, 12px);
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -385,6 +389,22 @@ onMounted(async () => {
 .btn-confirm:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+@media (max-width: 300px) {
+  .date-row,
+  .form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sync-icon {
+    display: none;
+  }
+
+  .btn {
+    width: 100%;
+  }
 }
 </style>
 
