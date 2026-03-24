@@ -21,6 +21,8 @@ pub fn run() {
             commands::clear_webdav_config,
             commands::save_webdav_proxy_config,
             commands::load_webdav_proxy_config,
+            commands::save_privacy_settings,
+            commands::load_privacy_settings,
             commands::webdav_upload,
             commands::webdav_download,
             commands::get_autostart,

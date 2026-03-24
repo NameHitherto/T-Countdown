@@ -67,6 +67,21 @@ pub fn load_webdav_proxy_config() -> Result<crate::models::ProxyConfig, String> 
 }
 
 #[tauri::command]
+pub fn save_privacy_settings(
+    enabled: bool,
+    long_press_duration: u64,
+    mask_mode: String,
+    mask_image: String,
+) -> Result<(), String> {
+    config::save_privacy_settings(enabled, long_press_duration, mask_mode, mask_image)
+}
+
+#[tauri::command]
+pub fn load_privacy_settings() -> Result<crate::models::PrivacySettingsConfig, String> {
+    config::load_privacy_settings()
+}
+
+#[tauri::command]
 pub async fn webdav_upload(json: String) -> Result<(), String> {
     webdav::upload(json).await
 }

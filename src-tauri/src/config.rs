@@ -2,7 +2,7 @@ use std::fs;
 
 use base64::{engine::general_purpose, Engine as _};
 
-use crate::models::{AppConfig, ProxyConfig, WebDavConfig, WebDavCredentials};
+use crate::models::{AppConfig, PrivacySettingsConfig, ProxyConfig, WebDavConfig, WebDavCredentials};
 use crate::storage::config_file_path;
 
 const ENCRYPT_KEY: &[u8] = b"t-countdown-2024-encrypt-key!@#$";
@@ -77,6 +77,33 @@ pub fn save_webdav_proxy_config(enabled: bool, port: Option<u16>) -> Result<(), 
 
 pub fn load_webdav_proxy_config() -> Result<ProxyConfig, String> {
     Ok(read_config().webdav_proxy)
+}
+
+pub fn save_privacy_settings(
+    enabled: bool,
+    long_press_duration: u64,
+    mask_mode: String,
+    mask_image: String,
+) -> Result<(), String> {
+    let mut config = read_config();
+    let normalized_mode = if mask_mode == "image" {
+        "image".to_string()
+    } else {
+        "blur".to_string()
+    };
+
+    config.privacy = PrivacySettingsConfig {
+        enabled,
+        long_press_duration: long_press_duration.clamp(300, 5000),
+        mask_mode: normalized_mode,
+        mask_image,
+    };
+
+    write_config(&config)
+}
+
+pub fn load_privacy_settings() -> Result<PrivacySettingsConfig, String> {
+    Ok(read_config().privacy)
 }
 
 pub fn load_webdav_credentials() -> Result<WebDavCredentials, String> {

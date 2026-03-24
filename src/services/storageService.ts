@@ -4,8 +4,29 @@ import {
   UPDATE_PROXY_STORAGE_KEY,
   WINDOW_STATE_STORAGE_KEY,
 } from '../constants/app';
+import { invoke } from '@tauri-apps/api/core';
 import type { PrivacySettings, UpdateProxySettings, WindowState } from '../types/countdown';
 import { DEFAULT_PRIVACY_SETTINGS, DEFAULT_UPDATE_PROXY_SETTINGS } from '../types/countdown';
+
+interface RustPrivacySettings {
+  enabled: boolean;
+  long_press_duration: number;
+  mask_mode: string;
+  mask_image: string;
+}
+
+const normalizePrivacySettings = (settings: Partial<PrivacySettings>): PrivacySettings => {
+  const normalizedDuration = Number.isFinite(settings.longPressDuration)
+    ? Number(settings.longPressDuration)
+    : DEFAULT_PRIVACY_SETTINGS.longPressDuration;
+  return {
+    ...DEFAULT_PRIVACY_SETTINGS,
+    ...settings,
+    longPressDuration: Math.max(300, Math.min(5000, normalizedDuration)),
+    maskMode: settings.maskMode === 'image' ? 'image' : 'blur',
+    maskImage: settings.maskImage ?? '',
+  };
+};
 
 const readJson = <T>(key: string): T | null => {
   try {
@@ -36,13 +57,30 @@ export const saveLockState = (locked: boolean) => {
   writeJson(LOCK_STATE_STORAGE_KEY, locked);
 };
 
-export const loadPrivacySettings = (): PrivacySettings => {
-  const saved = readJson<Partial<PrivacySettings>>(PRIVACY_SETTINGS_STORAGE_KEY);
-  return { ...DEFAULT_PRIVACY_SETTINGS, ...saved };
+export const loadPrivacySettings = async (): Promise<PrivacySettings> => {
+  try {
+    const saved = await invoke<RustPrivacySettings>('load_privacy_settings');
+    return normalizePrivacySettings({
+      enabled: saved.enabled,
+      longPressDuration: saved.long_press_duration,
+      maskMode: saved.mask_mode === 'image' ? 'image' : 'blur',
+      maskImage: saved.mask_image,
+    });
+  } catch {
+    const localSaved = readJson<Partial<PrivacySettings>>(PRIVACY_SETTINGS_STORAGE_KEY);
+    return normalizePrivacySettings(localSaved ?? {});
+  }
 };
 
-export const savePrivacySettings = (settings: PrivacySettings) => {
-  writeJson(PRIVACY_SETTINGS_STORAGE_KEY, settings);
+export const savePrivacySettings = async (settings: PrivacySettings) => {
+  const normalized = normalizePrivacySettings(settings);
+  writeJson(PRIVACY_SETTINGS_STORAGE_KEY, normalized);
+  await invoke('save_privacy_settings', {
+    enabled: normalized.enabled,
+    longPressDuration: normalized.longPressDuration,
+    maskMode: normalized.maskMode,
+    maskImage: normalized.maskImage,
+  });
 };
 
 export const loadUpdateProxySettings = (): UpdateProxySettings => {

@@ -181,6 +181,7 @@ const {
 } = useCountdownItems();
 
 const {
+  initPrivacySettings,
   privacySettings,
   isPrivacyActive,
   isLongPressing,
@@ -214,6 +215,7 @@ const handleCloseWindow = async () => {
 };
 
 onMounted(async () => {
+  await initPrivacySettings();
   await restoreWindowState();
   await loadData();
   await refreshSyncConfig();

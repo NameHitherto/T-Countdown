@@ -4,10 +4,11 @@ import {
   loadPrivacySettings as readPrivacySettings,
   savePrivacySettings as writePrivacySettings,
 } from '../services/storageService';
+import { DEFAULT_PRIVACY_SETTINGS } from '../types/countdown';
 import type { PrivacySettings } from '../types/countdown';
 
 export const usePrivacyMode = () => {
-  const privacySettings = ref<PrivacySettings>(readPrivacySettings());
+  const privacySettings = ref<PrivacySettings>({ ...DEFAULT_PRIVACY_SETTINGS });
   const isPrivacyActive = ref(false);
   const isLongPressing = ref(false);
   const spreadProgress = ref(0);
@@ -17,6 +18,11 @@ export const usePrivacyMode = () => {
   const privacySpreadOrigin = ref({ x: 0, y: 0 });
   let longPressRaf: number | null = null;
   let longPressStartTime = 0;
+
+  const initPrivacySettings = async () => {
+    const settings = await readPrivacySettings();
+    privacySettings.value = { ...settings };
+  };
 
   const contentBlurStyle = computed(() => {
     if (isPrivacyActive.value) {
@@ -115,12 +121,28 @@ export const usePrivacyMode = () => {
   watch(
     privacySettings,
     (settings) => {
-      writePrivacySettings(settings);
+      void writePrivacySettings(settings).catch(() => {
+        // 忽略隐私设置保存失败
+      });
     },
     { deep: true },
   );
 
+  watch(
+    () => privacySettings.value.enabled,
+    (enabled) => {
+      if (enabled) {
+        return;
+      }
+      onPrivacyBtnUp();
+      if (isPrivacyActive.value) {
+        deactivatePrivacy();
+      }
+    },
+  );
+
   return {
+    initPrivacySettings,
     privacySettings,
     isPrivacyActive,
     isLongPressing,
