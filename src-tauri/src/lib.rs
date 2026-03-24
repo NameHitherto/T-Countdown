@@ -23,6 +23,8 @@ pub fn run() {
             commands::load_webdav_proxy_config,
             commands::save_privacy_settings,
             commands::load_privacy_settings,
+            commands::save_sync_settings,
+            commands::load_sync_settings,
             commands::webdav_upload,
             commands::webdav_download,
             commands::get_autostart,

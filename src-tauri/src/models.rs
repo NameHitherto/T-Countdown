@@ -23,6 +23,10 @@ fn default_privacy_mask_mode() -> String {
     "blur".to_string()
 }
 
+fn default_auto_sync_interval_seconds() -> u64 {
+    60
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PrivacySettingsConfig {
     #[serde(default)]
@@ -46,6 +50,20 @@ impl Default for PrivacySettingsConfig {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncSettingsConfig {
+    #[serde(default = "default_auto_sync_interval_seconds")]
+    pub auto_sync_interval_seconds: u64,
+}
+
+impl Default for SyncSettingsConfig {
+    fn default() -> Self {
+        Self {
+            auto_sync_interval_seconds: default_auto_sync_interval_seconds(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AppConfig {
     pub webdav: Option<WebDavConfig>,
@@ -53,6 +71,8 @@ pub struct AppConfig {
     pub webdav_proxy: ProxyConfig,
     #[serde(default)]
     pub privacy: PrivacySettingsConfig,
+    #[serde(default)]
+    pub sync: SyncSettingsConfig,
 }
 
 pub struct WebDavCredentials {

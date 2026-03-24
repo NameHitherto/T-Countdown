@@ -44,6 +44,11 @@ export type UpdateProxySettings = ProxySettings;
 
 export type WebDavProxySettings = ProxySettings;
 
+export interface SyncSettings {
+  /** 自动云同步间隔（毫秒） */
+  autoSyncIntervalMs: number;
+}
+
 export const DEFAULT_PRIVACY_SETTINGS: PrivacySettings = {
   enabled: false,
   longPressDuration: 500,
@@ -62,6 +67,10 @@ export const DEFAULT_UPDATE_PROXY_SETTINGS: UpdateProxySettings = {
 
 export const DEFAULT_WEBDAV_PROXY_SETTINGS: WebDavProxySettings = {
   ...DEFAULT_PROXY_SETTINGS,
+};
+
+export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
+  autoSyncIntervalMs: 60 * 1000,
 };
 
 export type AppView = 'list' | 'settings';

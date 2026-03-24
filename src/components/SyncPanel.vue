@@ -9,6 +9,24 @@
       <p class="panel-desc">请先在坚果云官网开启第三方应用密码，再填入下方。</p>
 
       <div class="proxy-settings">
+        <div class="proxy-row proxy-row-input">
+          <span class="proxy-label">自动同步间隔（秒）</span>
+          <div class="interval-control">
+            <button class="interval-btn" @click="adjustSyncIntervalSeconds(-10)" :disabled="syncIntervalSeconds <= MIN_SYNC_INTERVAL_SECONDS">−</button>
+            <input
+              v-model="syncIntervalInput"
+              class="proxy-input interval-input"
+              type="text"
+              inputmode="numeric"
+              maxlength="4"
+              placeholder="10-3600"
+              @input="onSyncIntervalInput"
+              @blur="onSyncIntervalBlur"
+            />
+            <button class="interval-btn" @click="adjustSyncIntervalSeconds(10)" :disabled="syncIntervalSeconds >= MAX_SYNC_INTERVAL_SECONDS">+</button>
+          </div>
+        </div>
+
         <div class="proxy-row">
           <div class="proxy-info">
             <span class="proxy-title">云同步代理</span>
@@ -96,6 +114,24 @@
       </div>
 
       <div class="proxy-settings">
+        <div class="proxy-row proxy-row-input">
+          <span class="proxy-label">自动同步间隔（秒）</span>
+          <div class="interval-control">
+            <button class="interval-btn" @click="adjustSyncIntervalSeconds(-10)" :disabled="syncIntervalSeconds <= MIN_SYNC_INTERVAL_SECONDS">−</button>
+            <input
+              v-model="syncIntervalInput"
+              class="proxy-input interval-input"
+              type="text"
+              inputmode="numeric"
+              maxlength="4"
+              placeholder="10-3600"
+              @input="onSyncIntervalInput"
+              @blur="onSyncIntervalBlur"
+            />
+            <button class="interval-btn" @click="adjustSyncIntervalSeconds(10)" :disabled="syncIntervalSeconds >= MAX_SYNC_INTERVAL_SECONDS">+</button>
+          </div>
+        </div>
+
         <div class="proxy-row">
           <div class="proxy-info">
             <span class="proxy-title">云同步代理</span>
@@ -152,16 +188,18 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   clearWebDavConfig,
   downloadCountdownItems,
+  loadSyncSettings,
   loadWebDavConfig,
   loadWebDavProxyConfig,
   saveWebDavConfig,
+  saveSyncSettings,
   saveWebDavProxyConfig,
   testWebDav,
   uploadCountdownItems,
 } from '../services/syncService';
 import { getActiveProxyPort } from '../services/proxyService';
-import type { CountdownItemData, WebDavProxySettings } from '../types/countdown';
-import { DEFAULT_WEBDAV_PROXY_SETTINGS } from '../types/countdown';
+import type { CountdownItemData, SyncSettings, WebDavProxySettings } from '../types/countdown';
+import { DEFAULT_SYNC_SETTINGS, DEFAULT_WEBDAV_PROXY_SETTINGS } from '../types/countdown';
 
 const props = defineProps<{
   items: CountdownItemData[];
@@ -185,6 +223,15 @@ const messageType = ref<'success' | 'error'>('success');
 const savedEmail = ref('');
 const proxySettings = ref<WebDavProxySettings>({ ...DEFAULT_WEBDAV_PROXY_SETTINGS });
 const proxyPortInput = ref('');
+const syncSettings = ref<SyncSettings>({ ...DEFAULT_SYNC_SETTINGS });
+const MIN_SYNC_INTERVAL_SECONDS = 10;
+const MAX_SYNC_INTERVAL_SECONDS = 3600;
+
+const formatSyncIntervalSeconds = (seconds: number) => {
+  return String(Math.round(seconds));
+};
+
+const syncIntervalInput = ref(formatSyncIntervalSeconds(DEFAULT_SYNC_SETTINGS.autoSyncIntervalMs / 1000));
 
 // ---- 计算属性 ----
 
@@ -198,6 +245,7 @@ const maskedEmail = computed(() => {
 });
 
 const activeProxyPort = computed(() => getActiveProxyPort(proxySettings.value));
+const syncIntervalSeconds = computed(() => Math.round(syncSettings.value.autoSyncIntervalMs / 1000));
 
 // ---- 初始化 ----
 
@@ -220,6 +268,15 @@ onMounted(async () => {
     proxySettings.value = { ...DEFAULT_WEBDAV_PROXY_SETTINGS };
     proxyPortInput.value = '';
   }
+
+  try {
+    const loadedSyncSettings = await loadSyncSettings();
+    syncSettings.value = loadedSyncSettings;
+    syncIntervalInput.value = formatSyncIntervalSeconds(loadedSyncSettings.autoSyncIntervalMs / 1000);
+  } catch {
+    syncSettings.value = { ...DEFAULT_SYNC_SETTINGS };
+    syncIntervalInput.value = formatSyncIntervalSeconds(DEFAULT_SYNC_SETTINGS.autoSyncIntervalMs / 1000);
+  }
 });
 
 // ---- 操作方法 ----
@@ -232,6 +289,43 @@ const showMessage = (text: string, type: 'success' | 'error') => {
 
 const persistProxySettings = async () => {
   await saveWebDavProxyConfig(proxySettings.value);
+};
+
+const persistSyncSettings = async () => {
+  await saveSyncSettings(syncSettings.value);
+  emit('config-changed');
+};
+
+const applySyncIntervalSeconds = async (seconds: number) => {
+  const normalized = Math.max(
+    MIN_SYNC_INTERVAL_SECONDS,
+    Math.min(MAX_SYNC_INTERVAL_SECONDS, Math.round(seconds)),
+  );
+  syncSettings.value.autoSyncIntervalMs = normalized * 1000;
+  syncIntervalInput.value = formatSyncIntervalSeconds(normalized);
+  try {
+    await persistSyncSettings();
+  } catch (e: any) {
+    showMessage(e?.toString() || '保存同步间隔失败', 'error');
+  }
+};
+
+const adjustSyncIntervalSeconds = async (delta: number) => {
+  await applySyncIntervalSeconds(syncIntervalSeconds.value + delta);
+};
+
+const onSyncIntervalInput = () => {
+  syncIntervalInput.value = syncIntervalInput.value.replace(/\D/g, '').slice(0, 4);
+};
+
+const onSyncIntervalBlur = async () => {
+  const value = Number(syncIntervalInput.value);
+  if (!Number.isFinite(value) || value < MIN_SYNC_INTERVAL_SECONDS || value > MAX_SYNC_INTERVAL_SECONDS) {
+    showMessage('自动同步间隔请输入 10 到 3600 秒', 'error');
+    syncIntervalInput.value = formatSyncIntervalSeconds(syncIntervalSeconds.value);
+    return;
+  }
+  await applySyncIntervalSeconds(value);
 };
 
 const openJianguoyun = async () => {
@@ -422,6 +516,33 @@ const handleUnbind = async () => {
   color: white;
   font-size: clamp(11px, 3.8vw, 12px);
   text-align: right;
+}
+
+.interval-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.interval-input {
+  width: min(100%, 72px);
+  text-align: center;
+}
+
+.interval-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.interval-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .proxy-input::placeholder {

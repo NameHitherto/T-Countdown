@@ -166,11 +166,13 @@ const {
 
 const {
   countdownItems,
+  syncSettings,
   tick,
   sortedItems,
   loadData,
   persistData,
   refreshSyncConfig,
+  syncFromCloudOnLaunch,
   startRuntime,
   stopRuntime,
   handleAddConfirm,
@@ -179,6 +181,8 @@ const {
   handleDelete,
   handleSynced,
 } = useCountdownItems();
+
+void syncSettings;
 
 const {
   initPrivacySettings,
@@ -219,6 +223,7 @@ onMounted(async () => {
   await restoreWindowState();
   await loadData();
   await refreshSyncConfig();
+  await syncFromCloudOnLaunch();
   startRuntime();
   startPersistence();
 });

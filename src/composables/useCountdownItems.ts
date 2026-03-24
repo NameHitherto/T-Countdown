@@ -1,11 +1,18 @@
 import { computed, ref, watch } from 'vue';
-import { AUTO_SYNC_INTERVAL, SYNC_DEBOUNCE } from '../constants/app';
+import { SYNC_DEBOUNCE } from '../constants/app';
 import { loadCountdownItems, saveCountdownItems } from '../services/dataService';
-import { hasWebDavConfig, uploadCountdownItems } from '../services/syncService';
-import type { CountdownItemData } from '../types/countdown';
+import {
+  downloadCountdownItems,
+  hasWebDavConfig,
+  loadSyncSettings,
+  uploadCountdownItems,
+} from '../services/syncService';
+import { DEFAULT_SYNC_SETTINGS } from '../types/countdown';
+import type { CountdownItemData, SyncSettings } from '../types/countdown';
 
 export const useCountdownItems = () => {
   const countdownItems = ref<CountdownItemData[]>([]);
+  const syncSettings = ref<SyncSettings>({ ...DEFAULT_SYNC_SETTINGS });
   const tick = ref(0);
   let webdavConfigured = false;
   let timer: number | null = null;
@@ -57,6 +64,14 @@ export const useCountdownItems = () => {
     } catch {
       webdavConfigured = false;
     }
+
+    try {
+      syncSettings.value = await loadSyncSettings();
+    } catch {
+      syncSettings.value = { ...DEFAULT_SYNC_SETTINGS };
+    }
+
+    restartAutoSyncTimer();
   };
 
   const doCloudSync = async () => {
@@ -83,6 +98,36 @@ export const useCountdownItems = () => {
     }, SYNC_DEBOUNCE);
   };
 
+  const restartAutoSyncTimer = () => {
+    if (autoSyncTimer) {
+      clearInterval(autoSyncTimer);
+      autoSyncTimer = null;
+    }
+
+    if (!webdavConfigured) {
+      return;
+    }
+
+    autoSyncTimer = window.setInterval(() => {
+      void doCloudSync();
+    }, syncSettings.value.autoSyncIntervalMs);
+  };
+
+  const syncFromCloudOnLaunch = async () => {
+    if (!webdavConfigured) {
+      return;
+    }
+
+    try {
+      const remoteItems = await downloadCountdownItems();
+      countdownItems.value = remoteItems;
+      checkExpired();
+      await persistData();
+    } catch {
+      // 首次自动同步失败时静默降级，保留本地数据
+    }
+  };
+
   const startRuntime = () => {
     timer = window.setInterval(() => {
       tick.value += 1;
@@ -91,9 +136,7 @@ export const useCountdownItems = () => {
       }
     }, 1000);
 
-    autoSyncTimer = window.setInterval(() => {
-      void doCloudSync();
-    }, AUTO_SYNC_INTERVAL);
+    restartAutoSyncTimer();
   };
 
   const stopRuntime = () => {
@@ -152,11 +195,13 @@ export const useCountdownItems = () => {
 
   return {
     countdownItems,
+    syncSettings,
     tick,
     sortedItems,
     loadData,
     persistData,
     refreshSyncConfig,
+    syncFromCloudOnLaunch,
     startRuntime,
     stopRuntime,
     handleAddConfirm,

@@ -82,6 +82,16 @@ pub fn load_privacy_settings() -> Result<crate::models::PrivacySettingsConfig, S
 }
 
 #[tauri::command]
+pub fn save_sync_settings(auto_sync_interval_seconds: u64) -> Result<(), String> {
+    config::save_sync_settings(auto_sync_interval_seconds)
+}
+
+#[tauri::command]
+pub fn load_sync_settings() -> Result<crate::models::SyncSettingsConfig, String> {
+    config::load_sync_settings()
+}
+
+#[tauri::command]
 pub async fn webdav_upload(json: String) -> Result<(), String> {
     webdav::upload(json).await
 }

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { CountdownItemData, WebDavProxySettings } from '../types/countdown';
-import { DEFAULT_WEBDAV_PROXY_SETTINGS } from '../types/countdown';
+import type { CountdownItemData, SyncSettings, WebDavProxySettings } from '../types/countdown';
+import { DEFAULT_SYNC_SETTINGS, DEFAULT_WEBDAV_PROXY_SETTINGS } from '../types/countdown';
 import { normalizeCountdownItems } from './dataService';
 import { getProxyPortNumber } from './proxyService';
 
@@ -9,6 +9,10 @@ export const JIANGUOYUN_SERVER = 'https://dav.jianguoyun.com/dav/';
 interface RustProxyConfig {
   enabled: boolean;
   port: number | null;
+}
+
+interface RustSyncSettings {
+  auto_sync_interval_seconds: number;
 }
 
 export const loadWebDavConfig = async () => {
@@ -53,6 +57,25 @@ export const saveWebDavProxyConfig = async (settings: WebDavProxySettings) => {
   await invoke('save_webdav_proxy_config', {
     enabled: settings.enabled,
     port: getProxyPortNumber(settings),
+  });
+};
+
+export const loadSyncSettings = async (): Promise<SyncSettings> => {
+  const settings = await invoke<RustSyncSettings>('load_sync_settings');
+  const seconds = Number.isFinite(settings.auto_sync_interval_seconds)
+    ? settings.auto_sync_interval_seconds
+    : DEFAULT_SYNC_SETTINGS.autoSyncIntervalMs / 1000;
+  const clampedSeconds = Math.max(10, Math.min(3600, Math.floor(seconds)));
+  return {
+    autoSyncIntervalMs: clampedSeconds * 1000,
+  };
+};
+
+export const saveSyncSettings = async (settings: SyncSettings) => {
+  const seconds = Math.floor(settings.autoSyncIntervalMs / 1000);
+  const clampedSeconds = Math.max(10, Math.min(3600, seconds));
+  await invoke('save_sync_settings', {
+    autoSyncIntervalSeconds: clampedSeconds,
   });
 };
 

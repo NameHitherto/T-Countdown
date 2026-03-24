@@ -2,7 +2,10 @@ use std::fs;
 
 use base64::{engine::general_purpose, Engine as _};
 
-use crate::models::{AppConfig, PrivacySettingsConfig, ProxyConfig, WebDavConfig, WebDavCredentials};
+use crate::models::{
+    AppConfig, PrivacySettingsConfig, ProxyConfig, SyncSettingsConfig, WebDavConfig,
+    WebDavCredentials,
+};
 use crate::storage::config_file_path;
 
 const ENCRYPT_KEY: &[u8] = b"t-countdown-2024-encrypt-key!@#$";
@@ -104,6 +107,18 @@ pub fn save_privacy_settings(
 
 pub fn load_privacy_settings() -> Result<PrivacySettingsConfig, String> {
     Ok(read_config().privacy)
+}
+
+pub fn save_sync_settings(auto_sync_interval_seconds: u64) -> Result<(), String> {
+    let mut config = read_config();
+    config.sync = SyncSettingsConfig {
+        auto_sync_interval_seconds: auto_sync_interval_seconds.clamp(10, 3600),
+    };
+    write_config(&config)
+}
+
+pub fn load_sync_settings() -> Result<SyncSettingsConfig, String> {
+    Ok(read_config().sync)
 }
 
 pub fn load_webdav_credentials() -> Result<WebDavCredentials, String> {
