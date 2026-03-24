@@ -54,8 +54,8 @@ jobs:
           releaseBody: |
             ## 更新内容
             
-            - 体验优化：做了一些软件样式适配。
-            - 体验优化：修复了一些问题。
+            - 新增功能：首次启动会进行一次云同步，支持调整云同步时间间隔。
+            - 问题修复：修复了一些BUG。
 
           releaseDraft: false
           prerelease: false
